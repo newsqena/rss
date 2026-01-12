@@ -1,0 +1,180 @@
+name: Blogger Auto Bots
+
+on:
+  workflow_dispatch:
+
+jobs:
+
+  bot1:
+    name: Bot 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      TZ: Africa/Cairo
+
+    schedule:
+      - cron: "0 10,13,18,21 * * *"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Bot 1
+        run: python main.py
+        env:
+          RSS_URL: https://betawqit-elnagaa.com/feed/
+          BLOGGER_LABELS: اخبار قنا
+          BOT_NAME: Bot 1
+          SCRAPE_MODE: default
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+
+  bot2:
+    name: Bot 2
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      TZ: Africa/Cairo
+
+    schedule:
+      - cron: "0 12,19 * * *"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=4
+          BLOGGER_LABELS: حوادث
+          BOT_NAME: Bot 2
+          SCRAPE_MODE: custom
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+
+  bot3:
+    name: Bot 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      TZ: Africa/Cairo
+
+    schedule:
+      - cron: "0 14,23 * * *"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=5
+          BLOGGER_LABELS: رياضة
+          BOT_NAME: Bot 3
+          SCRAPE_MODE: custom
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+
+  bot4:
+    name: Bot 4
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      TZ: Africa/Cairo
+
+    schedule:
+      - cron: "0 11 * * *"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=8
+          BLOGGER_LABELS: صحة وفن
+          BOT_NAME: Bot 4
+          SCRAPE_MODE: custom
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+
+  bot5:
+    name: Bot 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      TZ: Africa/Cairo
+
+    schedule:
+      - cron: "0 15 * * *"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=2
+          BLOGGER_LABELS: برلمان 25
+          BOT_NAME: Bot 5
+          SCRAPE_MODE: custom
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+
+  bot6:
+    name: Bot 6
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      TZ: Africa/Cairo
+
+    schedule:
+      - cron: "0 20 * * *"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=17
+          BLOGGER_LABELS: علوم وتكنولوجيا
+          BOT_NAME: Bot 6
+          SCRAPE_MODE: custom
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
