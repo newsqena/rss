@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import random
 import requests
@@ -23,12 +24,11 @@ SCRAPE_MODE = os.getenv("SCRAPE_MODE", "default")  # default | custom
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 BLOG_ID = "8964557641790201632"
-CREDENTIALS_FILE = "creds.json"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 
 MAX_POSTS_PER_RUN = 3
-MIN_SLEEP = 30
-MAX_SLEEP = 90
+MIN_SLEEP = 40
+MAX_SLEEP = 75
 
 # =========================
 # OpenAI
@@ -77,15 +77,33 @@ def send_telegram(status, message):
         pass
 
 # =========================
+# Blogger Credentials (من Secret)
+# =========================
+
+def get_blogger_credentials():
+    creds_json = os.environ.get("BLOGGER_CREDS_JSON")
+    if not creds_json:
+        raise Exception("BLOGGER_CREDS_JSON secret not found")
+
+    creds_dict = json.loads(creds_json)
+    creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+
+    return creds
+
+def build_blogger_service():
+    creds = get_blogger_credentials()
+    return build("blogger", "v3", credentials=creds)
+
+# =========================
 # RSS
 # =========================
 
 def get_latest_news(rss_url, limit=20):
     feed = feedparser.parse(rss_url)
-    items = []
-    for entry in feed.entries[:limit]:
-        items.append((entry.title, entry.link))
-    return items
+    return [(e.title, e.link) for e in feed.entries[:limit]]
 
 # =========================
 # سحب المقال - عادي
@@ -163,8 +181,7 @@ def paraphrase_article(text):
         temperature=0.25
     )
 
-    title = t.choices[0].message.content.strip()
-    return title, article
+    return t.choices[0].message.content.strip(), article
 
 # =========================
 # Cloudinary
@@ -182,14 +199,8 @@ def upload_to_cloudinary(image_url):
         return image_url
 
 # =========================
-# Blogger
+# Blogger Helpers
 # =========================
-
-def build_blogger_service():
-    creds = Credentials.from_authorized_user_file(CREDENTIALS_FILE, SCOPES)
-    if creds.expired:
-        creds.refresh(Request())
-    return build("blogger", "v3", credentials=creds)
 
 def is_title_duplicate(service, title):
     posts = service.posts().list(
@@ -198,28 +209,27 @@ def is_title_duplicate(service, title):
         fetchBodies=False
     ).execute().get("items", [])
 
-    for p in posts:
-        if p["title"].strip() == title.strip():
-            return True
-    return False
+    return any(p["title"].strip() == title.strip() for p in posts)
 
 def publish_to_blogger(service, title, content, labels):
     if is_title_duplicate(service, title):
         send_telegram("duplicate", f"عنوان مكرر:\n{title}")
         return None
 
-    body = {
-        "title": title,
-        "content": content,
-        "labels": labels,
-        "isDraft": False
-    }
+    post = service.posts().insert(
+        blogId=BLOG_ID,
+        body={
+            "title": title,
+            "content": content,
+            "labels": labels,
+            "isDraft": False
+        }
+    ).execute()
 
-    post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
     return post["url"]
 
 # =========================
-# HTML المحتوى
+# HTML
 # =========================
 
 def build_post_content(text, image_url):
@@ -249,7 +259,7 @@ def main():
                     text, img = extract_custom_article(link)
 
                 if not text:
-                    send_telegram("skip", f"تم تخطي الخبر:\n{title}")
+                    send_telegram("skip", f"❌ مفيش محتوى:\n{title}")
                     continue
 
                 final_img = upload_to_cloudinary(img)
@@ -267,10 +277,10 @@ def main():
                 send_telegram("error", f"{title}\n<code>{e}</code>")
 
         if published == 0:
-            send_telegram("info", "لا توجد أخبار جديدة في هذا التشغيل")
+            send_telegram("info", "❌ مفيش أخبار جديدة")
 
     except Exception as e:
-        send_telegram("error", f"خطأ عام:\n<code>{e}</code>")
+        send_telegram("error", f"🚨 خطأ عام\n<code>{e}</code>")
         raise
 
 if __name__ == "__main__":
