@@ -45,7 +45,7 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          touch published_urls.txt # إنشاء الملف إذا لم يكن موجوداً
+          touch accidents_published_urls # إنشاء الملف إذا لم يكن موجوداً
           git add accidents_published_urls.txt
           git commit -m "Update published articles list" || exit 0
           git push
