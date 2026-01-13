@@ -1,0 +1,28 @@
+name: Bot 2 - حوادث
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 10,17 * * *"
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Africa/Cairo
+      BLOGGER_CREDS_JSON: ${{ secrets.BLOGGER_CREDS_JSON }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=4
+          BLOGGER_LABELS: حوادث
+          BOT_NAME: Bot 2
+          SCRAPE_MODE: custom
