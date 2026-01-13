@@ -22,6 +22,9 @@ BLOG_ID = "8964557641790201632"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 MAX_POSTS_PER_RUN = 3
 
+WAIT_MIN = 40
+WAIT_MAX = 70
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
@@ -38,9 +41,7 @@ cloudinary.config(
 # =========================
 
 def clean_text(text):
-    """تنظيف النصوص من النجوم والرموز الزائدة تماماً"""
     if not text: return ""
-    # إزالة النجوم، علامات التنصيص بكل أنواعها، والهاشتاجات
     clean = re.sub(r'[*#\"\'“”«»]', '', text)
     return clean.strip()
 
@@ -89,11 +90,10 @@ def extract_article(link):
     except: return None, None
 
 def paraphrase_all(original_title, original_text):
-    """إعادة صياغة العنوان والمحتوى معاً باستخدام OpenAI"""
     api_key = os.getenv("OPENAI_API_KEY")
     url = "https://api.openai.com/v1/chat/completions"
     
-    prompt = f"أنت صحفي محترف. أعد صياغة الخبر التالي.\n\nالعنوان الأصلي: {original_title}\n\nالمحتوى الأصلي: {original_text}\n\nالمطلوب:\n1. عنوان جديد جذاب وقوي بدون رموز أو علامات تنصيص.\n2. محتوى الخبر بصياغة احترافية ومنظمة.\n\nاجعل العنوان في السطر الأول وحده، وباقي الخبر في الأسطر التالية."
+    prompt = f"أنت صحفي محترف. أعد صياغة الخبر التالي.\n\nالعنوان الأصلي: {original_title}\n\nالمحتوى الأصلي: {original_text}\n\nالمطلوب:\n1. عنوان جديد جذاب وقوي بدون رموز.\n2. محتوى الخبر بصياغة احترافية.\n\nاجعل العنوان في السطر الأول، وباقي الخبر في الأسفل."
     
     payload = {
         "model": "gpt-4o-mini",
@@ -107,12 +107,9 @@ def paraphrase_all(original_title, original_text):
         response = requests.post(url, headers=headers, json=payload, timeout=45)
         result = response.json()
         full_result = result['choices'][0]['message']['content'].strip()
-        
-        # فصل العنوان الجديد عن المحتوى
         lines = full_result.split('\n')
-        new_title = clean_text(lines[0]) # تنظيف العنوان الجديد فوراً
+        new_title = clean_text(lines[0])
         new_body = "\n".join(lines[1:]).strip()
-        
         return new_title, new_body
     except: return None, None
 
@@ -127,28 +124,35 @@ def main():
         response = requests.get(RSS_URL, headers=HEADERS, timeout=20)
         feed = feedparser.parse(response.content)
         
+        # سحب آخر 15 مقال تم نشرهم فعلياً في بلوجر للمقارنة
+        print("🔍 Fetching latest published posts to prevent duplicates...")
+        existing_posts = service.posts().list(blogId=BLOG_ID, maxResults=15, fetchBodies=False).execute().get("items", [])
+        existing_titles = [p['title'].strip() for p in existing_posts]
+
         published_count = 0
         for entry in feed.entries:
             if published_count >= MAX_POSTS_PER_RUN: break
             
-            print(f"🧐 Processing: {entry.title}")
+            # تنظيف عنوان الخبر الحالي للفحص
+            current_rss_title = entry.title.strip()
+            print(f"🧐 Checking: {current_rss_title}")
             
-            # فحص التكرار بناءً على عنوان الـ RSS الأصلي قبل التعديل
-            posts = service.posts().list(blogId=BLOG_ID, maxResults=10).execute().get("items", [])
-            if any(p["title"].strip() == entry.title.strip() for p in posts):
-                print("⏭️ Already published.")
+            # القاعدة الذهبية: إذا كان العنوان موجود في قائمة العناوين المنشورة، تخطاه فوراً
+            if current_rss_title in existing_titles:
+                print(f"⏭️ Skipping: '{current_rss_title}' is already on your blog.")
                 continue
 
+            # استخراج النص والصورة
             text, img = extract_article(entry.link)
-            if not text or len(text) < 150: continue
-
-            # إعادة صياغة العنوان والمحتوى
-            new_title, new_content = paraphrase_all(entry.title, text)
-            if not new_title or not new_content: 
-                print("❌ Failed to paraphrase.")
+            if not text or len(text) < 150: 
+                print("⚠️ Skipping: No valid content found.")
                 continue
 
-            # رفع الصورة لـ Cloudinary
+            # إعادة الصياغة
+            new_title, new_content = paraphrase_all(current_rss_title, text)
+            if not new_title or not new_content: continue
+
+            # رفع الصورة
             final_img = img
             if img:
                 try: 
@@ -156,25 +160,32 @@ def main():
                     final_img = up["secure_url"]
                 except: pass
 
-            # بناء محتوى HTML لبلوجر
+            # بناء الـ HTML
             html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6;'>"
             if final_img: 
                 html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px;'></div><br>"
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
 
-            # النشر في بلوجر بالعنوان الجديد النظيف
+            # النشر
             service.posts().insert(
                 blogId=BLOG_ID,
                 body={"title": new_title, "content": html, "labels": BLOGGER_LABELS, "isDraft": False}
             ).execute()
             
+            # إضافة العنوان الجديد للقائمة لضمان عدم تكراره في نفس الدورة
+            existing_titles.append(new_title)
+            
             published_count += 1
             print(f"✅ Published: {new_title}")
             send_telegram("success", f"تم نشر خبر جديد:\n<b>{new_title}</b>")
-            time.sleep(10)
+            
+            if published_count < MAX_POSTS_PER_RUN:
+                wait_time = random.randint(WAIT_MIN, WAIT_MAX)
+                print(f"😴 Sleeping for {wait_time}s...")
+                time.sleep(wait_time)
 
         if published_count == 0:
-            print("🏁 No new articles found.")
+            print("🏁 No new news found in this run.")
 
     except Exception as e:
         print(f"🚨 Error: {e}")
