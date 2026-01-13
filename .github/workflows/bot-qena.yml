@@ -7,7 +7,9 @@ jobs:
   run:
     runs-on: ubuntu-latest
     env:
+      # ربط الأسرار من إعدادات GitHub بالبوت لتشغيله
       TZ: Africa/Cairo
+      BLOGGER_CREDS_JSON: ${{ secrets.BLOGGER_CREDS_JSON }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -19,7 +21,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python main.py
+      - name: Run Python Script
+        run: python main.py
         env:
           RSS_URL: https://betawqit-elnagaa.com/feed/
           BLOGGER_LABELS: اخبار قنا
