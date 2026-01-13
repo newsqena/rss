@@ -4,6 +4,7 @@ import time
 import random
 import requests
 import feedparser
+import re 
 from bs4 import BeautifulSoup
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -17,7 +18,6 @@ import cloudinary.uploader
 RSS_URL = os.getenv("RSS_URL")
 BLOGGER_LABELS = [l.strip() for l in os.getenv("BLOGGER_LABELS", "").split(",") if l.strip()]
 BOT_NAME = os.getenv("BOT_NAME", "Unknown Bot")
-SCRAPE_MODE = os.getenv("SCRAPE_MODE", "default")
 BLOG_ID = "8964557641790201632"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 MAX_POSTS_PER_RUN = 3
@@ -36,6 +36,13 @@ cloudinary.config(
 # =========================
 # وظائف المساعدة
 # =========================
+
+def clean_text(text):
+    """تنظيف النصوص من النجوم والرموز الزائدة تماماً"""
+    if not text: return ""
+    # إزالة النجوم، علامات التنصيص بكل أنواعها، والهاشتاجات
+    clean = re.sub(r'[*#\"\'“”«»]', '', text)
+    return clean.strip()
 
 def send_telegram(status, message):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -81,41 +88,33 @@ def extract_article(link):
         return text, img_url
     except: return None, None
 
-def paraphrase_with_openai(text):
-    """استخدام طلب HTTP مباشر لـ OpenAI لتجنب مشاكل المكتبة"""
+def paraphrase_all(original_title, original_text):
+    """إعادة صياغة العنوان والمحتوى معاً باستخدام OpenAI"""
     api_key = os.getenv("OPENAI_API_KEY")
     url = "https://api.openai.com/v1/chat/completions"
     
+    prompt = f"أنت صحفي محترف. أعد صياغة الخبر التالي.\n\nالعنوان الأصلي: {original_title}\n\nالمحتوى الأصلي: {original_text}\n\nالمطلوب:\n1. عنوان جديد جذاب وقوي بدون رموز أو علامات تنصيص.\n2. محتوى الخبر بصياغة احترافية ومنظمة.\n\nاجعل العنوان في السطر الأول وحده، وباقي الخبر في الأسطر التالية."
+    
     payload = {
         "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "أنت صحفي محترف. أعد صياغة الخبر بأسلوب جذاب وعنوان قوي."},
-            {"role": "user", "content": f"أعد صياغة الخبر التالي وضع له عنواناً في السطر الأول:\n\n{text}"}
-        ],
-        "temperature": 0.3
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.4
     }
     
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     try:
-        # محاولة الطلب بمهلة 40 ثانية
-        response = requests.post(url, headers=headers, json=payload, timeout=40)
-        response.raise_for_status()
+        response = requests.post(url, headers=headers, json=payload, timeout=45)
         result = response.json()
-        full_text = result['choices'][0]['message']['content'].strip()
+        full_result = result['choices'][0]['message']['content'].strip()
         
-        # تقسيم العنوان عن المحتوى (يفترض أن العنوان أول سطر)
-        lines = full_text.split('\n')
-        title = lines[0].replace('#', '').strip()
-        body = "\n".join(lines[1:]).strip()
+        # فصل العنوان الجديد عن المحتوى
+        lines = full_result.split('\n')
+        new_title = clean_text(lines[0]) # تنظيف العنوان الجديد فوراً
+        new_body = "\n".join(lines[1:]).strip()
         
-        return title, body
-    except Exception as e:
-        print(f"⚠️ OpenAI Direct Error: {e}")
-        return None, None
+        return new_title, new_body
+    except: return None, None
 
 # =========================
 # التشغيل الرئيسي
@@ -132,10 +131,10 @@ def main():
         for entry in feed.entries:
             if published_count >= MAX_POSTS_PER_RUN: break
             
-            print(f"🧐 Checking: {entry.title}")
+            print(f"🧐 Processing: {entry.title}")
             
-            # فحص التكرار
-            posts = service.posts().list(blogId=BLOG_ID, maxResults=8).execute().get("items", [])
+            # فحص التكرار بناءً على عنوان الـ RSS الأصلي قبل التعديل
+            posts = service.posts().list(blogId=BLOG_ID, maxResults=10).execute().get("items", [])
             if any(p["title"].strip() == entry.title.strip() for p in posts):
                 print("⏭️ Already published.")
                 continue
@@ -143,13 +142,13 @@ def main():
             text, img = extract_article(entry.link)
             if not text or len(text) < 150: continue
 
-            # الصياغة باستخدام الطريقة المباشرة الجديدة
-            new_title, new_content = paraphrase_with_openai(text)
-            if not new_title or len(new_content) < 50: 
+            # إعادة صياغة العنوان والمحتوى
+            new_title, new_content = paraphrase_all(entry.title, text)
+            if not new_title or not new_content: 
                 print("❌ Failed to paraphrase.")
                 continue
 
-            # رفع الصورة
+            # رفع الصورة لـ Cloudinary
             final_img = img
             if img:
                 try: 
@@ -157,10 +156,13 @@ def main():
                     final_img = up["secure_url"]
                 except: pass
 
+            # بناء محتوى HTML لبلوجر
             html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6;'>"
-            if final_img: html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px;'></div><br>"
+            if final_img: 
+                html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px;'></div><br>"
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
 
+            # النشر في بلوجر بالعنوان الجديد النظيف
             service.posts().insert(
                 blogId=BLOG_ID,
                 body={"title": new_title, "content": html, "labels": BLOGGER_LABELS, "isDraft": False}
@@ -169,7 +171,7 @@ def main():
             published_count += 1
             print(f"✅ Published: {new_title}")
             send_telegram("success", f"تم نشر خبر جديد:\n<b>{new_title}</b>")
-            time.sleep(5)
+            time.sleep(10)
 
         if published_count == 0:
             print("🏁 No new articles found.")
