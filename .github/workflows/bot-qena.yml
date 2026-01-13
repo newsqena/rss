@@ -1,0 +1,27 @@
+name: Bot 1 - أخبار قنا
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8,11,16,19 * * *"
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Africa/Cairo
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          RSS_URL: https://betawqit-elnagaa.com/feed/
+          BLOGGER_LABELS: اخبار قنا
+          BOT_NAME: Bot 1
+          SCRAPE_MODE: default
