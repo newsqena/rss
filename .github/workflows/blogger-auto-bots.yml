@@ -3,14 +3,13 @@ name: Blogger Auto Bots
 on:
   workflow_dispatch:
   schedule:
-    # الجدول الزمني يعمل كل ساعة ليفحص أي بوت عليه الدور
     - cron: "0 * * * *"
 
 jobs:
   run-bots:
     name: Execute Scheduled Bots
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     
     env:
       TZ: Africa/Cairo
@@ -32,12 +31,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # بوت 1: اخبار قنا (10، 13، 18، 21 بتوقيت مصر)
       - name: Run Bot 1 - اخبار قنا
-        if: |
-          github.event_name == 'workflow_dispatch' ||
-          contains(fromJSON('["08", "11", "16", "19"]'), github.event.schedule && strategy.job-index == 0 && '08' || formatDateTime(github.event.issue.updated_at, 'HH')) 
-          # ملاحظة: الساعات بالأعلى هي 10, 1, 6, 9 بعد تحويلها لجرينتش
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["08", "11", "16", "19"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
         run: python main.py
         env:
           RSS_URL: https://betawqit-elnagaa.com/feed/
@@ -45,9 +40,8 @@ jobs:
           BOT_NAME: Bot 1
           SCRAPE_MODE: default
 
-      # بوت 2: حوادث (12، 19 بتوقيت مصر -> 10، 17 جرينتش)
       - name: Run Bot 2 - حوادث
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["10", "17"]'), github.event.schedule && 'dummy' || '')
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["10", "17"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
         run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=4
@@ -55,9 +49,8 @@ jobs:
           BOT_NAME: Bot 2
           SCRAPE_MODE: custom
 
-      # بوت 3: رياضة (14، 23 بتوقيت مصر -> 12، 21 جرينتش)
       - name: Run Bot 3 - رياضة
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["12", "21"]'), github.event.schedule && 'dummy' || '')
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["12", "21"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
         run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=5
@@ -65,9 +58,8 @@ jobs:
           BOT_NAME: Bot 3
           SCRAPE_MODE: custom
 
-      # بوت 4: صحة وفن (11 بتوقيت مصر -> 09 جرينتش)
       - name: Run Bot 4 - صحة وفن
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["09"]'), github.event.schedule && 'dummy' || '')
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["09"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
         run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=8
@@ -75,9 +67,8 @@ jobs:
           BOT_NAME: Bot 4
           SCRAPE_MODE: custom
 
-      # بوت 5: برلمان 25 (15 بتوقيت مصر -> 13 جرينتش)
       - name: Run Bot 5 - برلمان 25
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["13"]'), github.event.schedule && 'dummy' || '')
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["13"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
         run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=2
@@ -85,9 +76,8 @@ jobs:
           BOT_NAME: Bot 5
           SCRAPE_MODE: custom
 
-      # بوت 6: علوم وتكنولوجيا (20 بتوقيت مصر -> 18 جرينتش)
       - name: Run Bot 6 - علوم وتكنولوجيا
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["18"]'), github.event.schedule && 'dummy' || '')
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["18"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
         run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=17
