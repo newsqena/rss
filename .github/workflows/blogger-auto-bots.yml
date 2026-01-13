@@ -2,21 +2,27 @@ name: Blogger Auto Bots
 
 on:
   workflow_dispatch:
+  schedule:
+    # الجدول الزمني يعمل كل ساعة ليفحص أي بوت عليه الدور
+    - cron: "0 * * * *"
 
 jobs:
-
-  bot1:
-    name: Bot 1
+  run-bots:
+    name: Execute Scheduled Bots
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
+    timeout-minutes: 15
+    
     env:
       TZ: Africa/Cairo
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
 
-    schedule:
-      - cron: "0 10,13,18,21 * * *"
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -26,155 +32,65 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Bot 1
+      # بوت 1: اخبار قنا (10، 13، 18، 21 بتوقيت مصر)
+      - name: Run Bot 1 - اخبار قنا
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          contains(fromJSON('["08", "11", "16", "19"]'), github.event.schedule && strategy.job-index == 0 && '08' || formatDateTime(github.event.issue.updated_at, 'HH')) 
+          # ملاحظة: الساعات بالأعلى هي 10, 1, 6, 9 بعد تحويلها لجرينتش
         run: python main.py
         env:
           RSS_URL: https://betawqit-elnagaa.com/feed/
           BLOGGER_LABELS: اخبار قنا
           BOT_NAME: Bot 1
           SCRAPE_MODE: default
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
 
-  bot2:
-    name: Bot 2
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    env:
-      TZ: Africa/Cairo
-
-    schedule:
-      - cron: "0 12,19 * * *"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python main.py
+      # بوت 2: حوادث (12، 19 بتوقيت مصر -> 10، 17 جرينتش)
+      - name: Run Bot 2 - حوادث
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["10", "17"]'), github.event.schedule && 'dummy' || '')
+        run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=4
           BLOGGER_LABELS: حوادث
           BOT_NAME: Bot 2
           SCRAPE_MODE: custom
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
 
-  bot3:
-    name: Bot 3
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    env:
-      TZ: Africa/Cairo
-
-    schedule:
-      - cron: "0 14,23 * * *"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python main.py
+      # بوت 3: رياضة (14، 23 بتوقيت مصر -> 12، 21 جرينتش)
+      - name: Run Bot 3 - رياضة
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["12", "21"]'), github.event.schedule && 'dummy' || '')
+        run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=5
           BLOGGER_LABELS: رياضة
           BOT_NAME: Bot 3
           SCRAPE_MODE: custom
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
 
-  bot4:
-    name: Bot 4
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    env:
-      TZ: Africa/Cairo
-
-    schedule:
-      - cron: "0 11 * * *"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python main.py
+      # بوت 4: صحة وفن (11 بتوقيت مصر -> 09 جرينتش)
+      - name: Run Bot 4 - صحة وفن
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["09"]'), github.event.schedule && 'dummy' || '')
+        run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=8
           BLOGGER_LABELS: صحة وفن
           BOT_NAME: Bot 4
           SCRAPE_MODE: custom
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
 
-  bot5:
-    name: Bot 5
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    env:
-      TZ: Africa/Cairo
-
-    schedule:
-      - cron: "0 15 * * *"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python main.py
+      # بوت 5: برلمان 25 (15 بتوقيت مصر -> 13 جرينتش)
+      - name: Run Bot 5 - برلمان 25
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["13"]'), github.event.schedule && 'dummy' || '')
+        run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=2
           BLOGGER_LABELS: برلمان 25
           BOT_NAME: Bot 5
           SCRAPE_MODE: custom
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
 
-  bot6:
-    name: Bot 6
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    env:
-      TZ: Africa/Cairo
-
-    schedule:
-      - cron: "0 20 * * *"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install -r requirements.txt
-      - run: python main.py
+      # بوت 6: علوم وتكنولوجيا (20 بتوقيت مصر -> 18 جرينتش)
+      - name: Run Bot 6 - علوم وتكنولوجيا
+        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["18"]'), github.event.schedule && 'dummy' || '')
+        run: python main.py
         env:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=17
           BLOGGER_LABELS: علوم وتكنولوجيا
           BOT_NAME: Bot 6
           SCRAPE_MODE: custom
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
