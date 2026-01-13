@@ -8,10 +8,8 @@ from bs4 import BeautifulSoup
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from openai import OpenAI
 import cloudinary
 import cloudinary.uploader
-import httpx # مكتبة إضافية للتحكم في وقت الاتصال
 
 # =========================
 # إعدادات عامة
@@ -27,12 +25,6 @@ MAX_POSTS_PER_RUN = 3
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
-
-# إعداد OpenAI مع تحديد وقت انتظار إجباري (Timeout) لمنع التعليق
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    http_client=httpx.Client(timeout=30.0) # سيقطع الاتصال إذا لم يرد السيرفر خلال 30 ثانية
-)
 
 cloudinary.config(
     cloud_name="dldxptjuf",
@@ -63,7 +55,7 @@ def get_blogger_service():
     if creds.expired and creds.refresh_token: creds.refresh(Request())
     return build("blogger", "v3", credentials=creds)
 
-def extract_article(link, mode):
+def extract_article(link):
     try:
         r = requests.get(link, headers=HEADERS, timeout=20)
         r.raise_for_status()
@@ -89,25 +81,40 @@ def extract_article(link, mode):
         return text, img_url
     except: return None, None
 
-def paraphrase_article(text):
+def paraphrase_with_openai(text):
+    """استخدام طلب HTTP مباشر لـ OpenAI لتجنب مشاكل المكتبة"""
+    api_key = os.getenv("OPENAI_API_KEY")
+    url = "https://api.openai.com/v1/chat/completions"
+    
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "أنت صحفي محترف. أعد صياغة الخبر بأسلوب جذاب وعنوان قوي."},
+            {"role": "user", "content": f"أعد صياغة الخبر التالي وضع له عنواناً في السطر الأول:\n\n{text}"}
+        ],
+        "temperature": 0.3
+    }
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+
     try:
-        # صياغة الخبر
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"أعد صياغة الخبر التالي بأسلوب صحفي احترافي:\n\n{text}"}],
-            temperature=0.3
-        )
-        article = response.choices[0].message.content.strip()
+        # محاولة الطلب بمهلة 40 ثانية
+        response = requests.post(url, headers=headers, json=payload, timeout=40)
+        response.raise_for_status()
+        result = response.json()
+        full_text = result['choices'][0]['message']['content'].strip()
         
-        # صياغة العنوان
-        t_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"أعطني عنواناً صحفياً لهذا الخبر:\n\n{article}"}],
-            temperature=0.3
-        )
-        return t_response.choices[0].message.content.strip(), article
+        # تقسيم العنوان عن المحتوى (يفترض أن العنوان أول سطر)
+        lines = full_text.split('\n')
+        title = lines[0].replace('#', '').strip()
+        body = "\n".join(lines[1:]).strip()
+        
+        return title, body
     except Exception as e:
-        print(f"⚠️ OpenAI Error: {e}")
+        print(f"⚠️ OpenAI Direct Error: {e}")
         return None, None
 
 # =========================
@@ -118,7 +125,6 @@ def main():
     print(f"🚀 Starting {BOT_NAME}...")
     try:
         service = get_blogger_service()
-        # إضافة مهلة زمنية لسحب الـ RSS أيضاً
         response = requests.get(RSS_URL, headers=HEADERS, timeout=20)
         feed = feedparser.parse(response.content)
         
@@ -129,19 +135,21 @@ def main():
             print(f"🧐 Checking: {entry.title}")
             
             # فحص التكرار
-            posts = service.posts().list(blogId=BLOG_ID, maxResults=10).execute().get("items", [])
+            posts = service.posts().list(blogId=BLOG_ID, maxResults=8).execute().get("items", [])
             if any(p["title"].strip() == entry.title.strip() for p in posts):
                 print("⏭️ Already published.")
                 continue
 
-            text, img = extract_article(entry.link, SCRAPE_MODE)
-            if not text or len(text) < 150: 
-                print("⚠️ No content found.")
+            text, img = extract_article(entry.link)
+            if not text or len(text) < 150: continue
+
+            # الصياغة باستخدام الطريقة المباشرة الجديدة
+            new_title, new_content = paraphrase_with_openai(text)
+            if not new_title or len(new_content) < 50: 
+                print("❌ Failed to paraphrase.")
                 continue
 
-            new_title, new_content = paraphrase_article(text)
-            if not new_title: continue
-
+            # رفع الصورة
             final_img = img
             if img:
                 try: 
@@ -161,7 +169,7 @@ def main():
             published_count += 1
             print(f"✅ Published: {new_title}")
             send_telegram("success", f"تم نشر خبر جديد:\n<b>{new_title}</b>")
-            time.sleep(10)
+            time.sleep(5)
 
         if published_count == 0:
             print("🏁 No new articles found.")
