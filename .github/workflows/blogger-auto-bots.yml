@@ -1,16 +1,11 @@
-name: Blogger Auto Bots
-
+name: Bot 1 - أخبار قنا
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"
-
+    - cron: "0 8,11,16,19 * * *"
 jobs:
-  run-bots:
-    name: Execute Scheduled Bots
+  run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    
     env:
       TZ: Africa/Cairo
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -18,69 +13,15 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
       CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run Bot 1 - اخبار قنا
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["08", "11", "16", "19"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
-        run: python main.py
+      - run: pip install -r requirements.txt
+      - run: python main.py
         env:
           RSS_URL: https://betawqit-elnagaa.com/feed/
           BLOGGER_LABELS: اخبار قنا
           BOT_NAME: Bot 1
           SCRAPE_MODE: default
-
-      - name: Run Bot 2 - حوادث
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["10", "17"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
-        run: python main.py
-        env:
-          RSS_URL: https://www.elbalad.news/rss.aspx?id=4
-          BLOGGER_LABELS: حوادث
-          BOT_NAME: Bot 2
-          SCRAPE_MODE: custom
-
-      - name: Run Bot 3 - رياضة
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["12", "21"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
-        run: python main.py
-        env:
-          RSS_URL: https://www.elbalad.news/rss.aspx?id=5
-          BLOGGER_LABELS: رياضة
-          BOT_NAME: Bot 3
-          SCRAPE_MODE: custom
-
-      - name: Run Bot 4 - صحة وفن
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["09"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
-        run: python main.py
-        env:
-          RSS_URL: https://www.elbalad.news/rss.aspx?id=8
-          BLOGGER_LABELS: صحة وفن
-          BOT_NAME: Bot 4
-          SCRAPE_MODE: custom
-
-      - name: Run Bot 5 - برلمان 25
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["13"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
-        run: python main.py
-        env:
-          RSS_URL: https://www.elbalad.news/rss.aspx?id=2
-          BLOGGER_LABELS: برلمان 25
-          BOT_NAME: Bot 5
-          SCRAPE_MODE: custom
-
-      - name: Run Bot 6 - علوم وتكنولوجيا
-        if: github.event_name == 'workflow_dispatch' || contains(fromJSON('["18"]'), formatDateTime(github.event.issue.updated_at, 'HH'))
-        run: python main.py
-        env:
-          RSS_URL: https://www.elbalad.news/rss.aspx?id=17
-          BLOGGER_LABELS: علوم وتكنولوجيا
-          BOT_NAME: Bot 6
-          SCRAPE_MODE: custom
