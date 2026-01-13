@@ -21,8 +21,7 @@ BOT_NAME = os.getenv("BOT_NAME", "Unknown Bot")
 BLOG_ID = "8964557641790201632"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 MAX_POSTS_PER_RUN = 3
-# تم توحيد اسم الملف ليتطابق مع الـ YAML
-HISTORY_FILE = "accidents_published_urls.txt" 
+HISTORY_FILE = "published_urls.txt" 
 
 WAIT_MIN = 40
 WAIT_MAX = 70
@@ -39,31 +38,22 @@ cloudinary.config(
 )
 
 # =========================
-# وظائف إدارة الذاكرة
+# وظائف إدارة الذاكرة والتنظيف
 # =========================
 
 def load_history():
-    """تحميل الروابط من الملف النصي"""
     if not os.path.exists(HISTORY_FILE):
         return []
     with open(HISTORY_FILE, "r") as f:
         return [line.strip() for line in f.readlines()]
 
 def save_to_history(link):
-    """حفظ الرابط الجديد في الملف"""
     with open(HISTORY_FILE, "a") as f:
         f.write(link + "\n")
 
-# =========================
-# وظائف التنسيق والتنظيف
-# =========================
-
 def clean_for_display(text):
-    """حذف الرموز والكلمات التوضيحية من العنوان"""
     if not text: return ""
-    # إزالة النجوم والرموز
     clean = re.sub(r'[*#\"\'“”«»]', '', text)
-    # إزالة مقدمات مثل "عنوان جديد:" أو "العنوان:" التي يكتبها AI أحياناً
     clean = re.sub(r'^(عنوان جديد|العنوان|عنوان الخبر|Title|New Title|Headline):\s*', '', clean, flags=re.IGNORECASE)
     return clean.strip()
 
@@ -71,11 +61,19 @@ def send_telegram(status, message):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id: return
+    
     icons = {"success": "✅", "error": "🚨", "info": "ℹ️"}
-    text = f"{icons.get(status, 'ℹ️')} <b>{BOT_NAME}</b>\n\n{message}"
+    formatted_text = f"{icons.get(status, 'ℹ️')} <b>{BOT_NAME}</b>\n\n{message}"
+    
     try:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
-                      data={"chat_id": chat_id, "text": text, "parse_mode": "HTML"}, timeout=10)
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage", 
+            data={
+                "chat_id": chat_id, 
+                "text": formatted_text, 
+                "parse_mode": "HTML",
+                "disable_web_page_preview": False 
+            }, timeout=10)
     except: pass
 
 # =========================
@@ -84,7 +82,6 @@ def send_telegram(status, message):
 
 def get_blogger_service():
     creds_json = os.environ.get("BLOGGER_CREDS_JSON")
-    if not creds_json: raise Exception("BLOGGER_CREDS_JSON not found!")
     creds_dict = json.loads(creds_json)
     creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
     if creds.expired and creds.refresh_token: creds.refresh(Request())
@@ -93,21 +90,15 @@ def get_blogger_service():
 def extract_article(link):
     try:
         r = requests.get(link, headers=HEADERS, timeout=20)
-        r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
-        
-        container = soup.find("div", class_="entry") or \
-                    soup.find("div", class_="article-content") or \
-                    soup.find("article")
-        
+        container = soup.find("div", class_="entry") or soup.find("div", class_="article-content") or soup.find("article")
         if not container:
             paragraphs = soup.find_all("p")
             text = " ".join([p.get_text() for p in paragraphs if len(p.get_text()) > 60])
         else:
             for tag in container.find_all(["script", "style", "iframe", "aside", "ins"]): tag.decompose()
             text = container.get_text(" ", strip=True)
-        
-        img_tag = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "twitter:image"})
+        img_tag = soup.find("meta", property="og:image")
         img_url = img_tag.get("content") if img_tag else None
         return text, img_url
     except: return None, None
@@ -115,7 +106,6 @@ def extract_article(link):
 def paraphrase_all(original_title, original_text):
     api_key = os.getenv("OPENAI_API_KEY")
     url = "https://api.openai.com/v1/chat/completions"
-    
     prompt = (
         f"أنت صحفي محترف. أعد صياغة الخبر التالي بأسلوب مشوق.\n\n"
         f"العنوان الأصلي: {original_title}\n\n"
@@ -123,23 +113,15 @@ def paraphrase_all(original_title, original_text):
         f"المطلوب حرفياً:\n"
         f"1. اكتب العنوان الجديد في السطر الأول مباشرة بدون مقدمات.\n"
         f"2. اترك سطراً فارغاً ثم الخبر بصياغة احترافية.\n"
-        f"3. لا تستخدم النجوم (**) أو علامات التنصيص."
+        f"3. لا تستخدم النجوم (**) أو علامات التنصيص نهائياً."
     )
-    
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.4
-    }
+    payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "temperature": 0.4}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=45)
         full_result = response.json()['choices'][0]['message']['content'].strip()
         lines = full_result.split('\n')
-        new_title = clean_for_display(lines[0])
-        new_body = "\n".join(lines[1:]).strip()
-        return new_title, new_body
+        return clean_for_display(lines[0]), "\n".join(lines[1:]).strip()
     except: return None, None
 
 # =========================
@@ -152,17 +134,12 @@ def main():
         service = get_blogger_service()
         response = requests.get(RSS_URL, headers=HEADERS, timeout=20)
         feed = feedparser.parse(response.content)
-        
         published_links = load_history()
-        print(f"📁 History loaded: {len(published_links)} links.")
 
         published_count = 0
         for entry in feed.entries:
             if published_count >= MAX_POSTS_PER_RUN: break
-            
-            if entry.link in published_links:
-                print(f"⏭️ Already in history: {entry.title}")
-                continue
+            if entry.link in published_links: continue
 
             print(f"🧐 Processing: {entry.title}")
             text, img = extract_article(entry.link)
@@ -171,7 +148,7 @@ def main():
             new_title, new_content = paraphrase_all(entry.title, text)
             if not new_title: continue
 
-            # رفع الصورة
+            # رفع الصورة لـ Cloudinary
             final_img = img
             if img:
                 try: 
@@ -184,26 +161,25 @@ def main():
                 html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px;'></div><br>"
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
 
-            # النشر
-            service.posts().insert(
+            # النشر والحصول على الرابط
+            inserted_post = service.posts().insert(
                 blogId=BLOG_ID,
                 body={"title": new_title, "content": html, "labels": BLOGGER_LABELS, "isDraft": False}
             ).execute()
             
+            post_url = inserted_post.get('url')
             save_to_history(entry.link)
             published_links.append(entry.link)
-            
             published_count += 1
+            
             print(f"✅ Published: {new_title}")
-            send_telegram("success", f"تم نشر خبر جديد:\n<b>{new_title}</b>")
+            # إرسال العنوان والرابط لتليجرام
+            send_telegram("success", f"<b>{new_title}</b>\n\n🔗 رابط الخبر:\n{post_url}")
             
             if published_count < MAX_POSTS_PER_RUN:
-                wait_time = random.randint(WAIT_MIN, WAIT_MAX)
-                print(f"😴 Waiting {wait_time}s...")
-                time.sleep(wait_time)
+                time.sleep(random.randint(WAIT_MIN, WAIT_MAX))
 
     except Exception as e:
-        print(f"🚨 Error: {e}")
         send_telegram("error", f"خطأ في البوت: {e}")
 
 if __name__ == "__main__":
