@@ -8,9 +8,8 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    
     permissions:
-      contents: write # إعطاء البوت صلاحية الكتابة لحفظ ملف الـ txt
+      contents: write # ضروري جداً للكتابة في المستودع
 
     env:
       TZ: Africa/Cairo
@@ -24,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: true # مهم جداً للسماح برفع الملفات
+          persist-credentials: true
 
       - uses: actions/setup-python@v5
         with:
@@ -39,13 +38,14 @@ jobs:
           RSS_URL: https://www.elbalad.news/rss.aspx?id=4
           BLOGGER_LABELS: حوادث
           BOT_NAME: Bot 2
-          SCRAPE_MODE: custom
 
       - name: Commit and push changes
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          touch accidents_published_urls # إنشاء الملف إذا لم يكن موجوداً
+          # إنشاء الملف فوراً إذا لم يكن موجوداً لمنع خطأ pathspec
+          touch accidents_published_urls.txt 
           git add accidents_published_urls.txt
-          git commit -m "Update published articles list" || exit 0
+          # سيقوم بالحفظ فقط إذا حدث تغيير، ولن يفشل إذا لم يحدث شيء
+          git commit -m "Update history list [skip ci]" || echo "No changes to commit"
           git push
