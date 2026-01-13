@@ -21,7 +21,8 @@ BOT_NAME = os.getenv("BOT_NAME", "Unknown Bot")
 BLOG_ID = "8964557641790201632"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 MAX_POSTS_PER_RUN = 3
-HISTORY_FILE = "published_urls.txt" # ملف حفظ الروابط لمنع التكرار
+# تم توحيد اسم الملف ليتطابق مع الـ YAML
+HISTORY_FILE = "accidents_published_urls.txt" 
 
 WAIT_MIN = 40
 WAIT_MAX = 70
@@ -38,18 +39,18 @@ cloudinary.config(
 )
 
 # =========================
-# وظائف إدارة الذاكرة (ملف الـ txt)
+# وظائف إدارة الذاكرة
 # =========================
 
 def load_history():
-    """تحميل الروابط التي تم نشرها سابقاً"""
+    """تحميل الروابط من الملف النصي"""
     if not os.path.exists(HISTORY_FILE):
         return []
     with open(HISTORY_FILE, "r") as f:
         return [line.strip() for line in f.readlines()]
 
 def save_to_history(link):
-    """حفظ رابط الخبر الجديد في الملف"""
+    """حفظ الرابط الجديد في الملف"""
     with open(HISTORY_FILE, "a") as f:
         f.write(link + "\n")
 
@@ -58,11 +59,11 @@ def save_to_history(link):
 # =========================
 
 def clean_for_display(text):
-    """تنظيف العناوين من المقدمات والرموز"""
+    """حذف الرموز والكلمات التوضيحية من العنوان"""
     if not text: return ""
-    # إزالة النجوم والهاشتاجات وعلامات التنصيص
+    # إزالة النجوم والرموز
     clean = re.sub(r'[*#\"\'“”«»]', '', text)
-    # إزالة كلمات مثل "عنوان جديد:" أو "العنوان:" التي قد يضيفها الذكاء الاصطناعي
+    # إزالة مقدمات مثل "عنوان جديد:" أو "العنوان:" التي يكتبها AI أحياناً
     clean = re.sub(r'^(عنوان جديد|العنوان|عنوان الخبر|Title|New Title|Headline):\s*', '', clean, flags=re.IGNORECASE)
     return clean.strip()
 
@@ -97,7 +98,6 @@ def extract_article(link):
         
         container = soup.find("div", class_="entry") or \
                     soup.find("div", class_="article-content") or \
-                    soup.find("div", id="article-body") or \
                     soup.find("article")
         
         if not container:
@@ -121,9 +121,9 @@ def paraphrase_all(original_title, original_text):
         f"العنوان الأصلي: {original_title}\n\n"
         f"المحتوى الأصلي: {original_text}\n\n"
         f"المطلوب حرفياً:\n"
-        f"1. اكتب العنوان الجديد في السطر الأول مباشرة بدون مقدمات مثل 'عنوان جديد' أو 'العنوان'.\n"
-        f"2. اترك سطراً فارغاً ثم اكتب الخبر بصياغة احترافية ومنظمة.\n"
-        f"3. لا تستخدم النجوم (**) أو علامات التنصيص نهائياً."
+        f"1. اكتب العنوان الجديد في السطر الأول مباشرة بدون مقدمات.\n"
+        f"2. اترك سطراً فارغاً ثم الخبر بصياغة احترافية.\n"
+        f"3. لا تستخدم النجوم (**) أو علامات التنصيص."
     )
     
     payload = {
@@ -135,16 +135,12 @@ def paraphrase_all(original_title, original_text):
     
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=45)
-        response.raise_for_status()
         full_result = response.json()['choices'][0]['message']['content'].strip()
-        
         lines = full_result.split('\n')
         new_title = clean_for_display(lines[0])
         new_body = "\n".join(lines[1:]).strip()
         return new_title, new_body
-    except Exception as e:
-        print(f"❌ OpenAI Error: {e}")
-        return None, None
+    except: return None, None
 
 # =========================
 # التشغيل الرئيسي
@@ -157,17 +153,15 @@ def main():
         response = requests.get(RSS_URL, headers=HEADERS, timeout=20)
         feed = feedparser.parse(response.content)
         
-        # تحميل سجل الروابط المنشورة
         published_links = load_history()
-        print(f"📁 History loaded: {len(published_links)} links found.")
+        print(f"📁 History loaded: {len(published_links)} links.")
 
         published_count = 0
         for entry in feed.entries:
             if published_count >= MAX_POSTS_PER_RUN: break
             
-            # الفحص بالرابط الأصلي (أقوى وسيلة منع تكرار)
             if entry.link in published_links:
-                print(f"⏭️ Skipping (Already in history): {entry.title}")
+                print(f"⏭️ Already in history: {entry.title}")
                 continue
 
             print(f"🧐 Processing: {entry.title}")
@@ -175,7 +169,7 @@ def main():
             if not text or len(text) < 150: continue
 
             new_title, new_content = paraphrase_all(entry.title, text)
-            if not new_title or not new_content: continue
+            if not new_title: continue
 
             # رفع الصورة
             final_img = img
@@ -185,19 +179,17 @@ def main():
                     final_img = up["secure_url"]
                 except: pass
 
-            # بناء محتوى المقال
             html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6;'>"
             if final_img: 
                 html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px;'></div><br>"
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
 
-            # النشر في بلوجر
+            # النشر
             service.posts().insert(
                 blogId=BLOG_ID,
                 body={"title": new_title, "content": html, "labels": BLOGGER_LABELS, "isDraft": False}
             ).execute()
             
-            # حفظ الرابط في الذاكرة
             save_to_history(entry.link)
             published_links.append(entry.link)
             
@@ -205,17 +197,13 @@ def main():
             print(f"✅ Published: {new_title}")
             send_telegram("success", f"تم نشر خبر جديد:\n<b>{new_title}</b>")
             
-            # انتظار عشوائي لتجنب الحظر
             if published_count < MAX_POSTS_PER_RUN:
                 wait_time = random.randint(WAIT_MIN, WAIT_MAX)
-                print(f"😴 Waiting {wait_time}s for next article...")
+                print(f"😴 Waiting {wait_time}s...")
                 time.sleep(wait_time)
 
-        if published_count == 0:
-            print("🏁 No new news found.")
-
     except Exception as e:
-        print(f"🚨 Critical Error: {e}")
+        print(f"🚨 Error: {e}")
         send_telegram("error", f"خطأ في البوت: {e}")
 
 if __name__ == "__main__":
