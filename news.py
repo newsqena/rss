@@ -29,14 +29,13 @@ MAX_SLEEP = 75
 HISTORY_FILE = "published_urls.txt"
 
 # =========================
-# Session (محاكاة متصفح حقيقي)
+# Session (محاكاة متصفح)
 # =========================
 
 session = requests.Session()
 session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "ar,en-US;q=0.7,en;q=0.3",
+    "Accept-Language": "ar,en-US;q=0.8",
     "Referer": "https://www.google.com/"
 })
 
@@ -95,7 +94,31 @@ def save_history(link):
         f.write(link + "\n")
 
 # =========================
-# تحميل الأخبار (RSS أو Homepage)
+# تحميل الأخبار (RSS عبر Textise)
+# =========================
+
+def load_news():
+    try:
+        proxy_url = f"https://textise.org/showtext.aspx?strURL={RSS_URL}"
+        print("🌐 Loading RSS via Textise...")
+        r = session.get(proxy_url, timeout=40)
+        r.raise_for_status()
+
+        feed = feedparser.parse(r.text)
+
+        if not feed.entries:
+            print("❌ No RSS entries found")
+            return []
+
+        print(f"✅ RSS loaded: {len(feed.entries)} items")
+        return [(e.title, e.link) for e in feed.entries]
+
+    except Exception as e:
+        print(f"🚨 RSS load failed: {e}")
+        return []
+
+# =========================
+# استخراج المقال
 # =========================
 
 def extract_article(link):
@@ -105,14 +128,18 @@ def extract_article(link):
         r.raise_for_status()
 
         soup = BeautifulSoup(r.text, "html.parser")
-
         paragraphs = soup.find_all("p")
-        text = " ".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 40)
+
+        text = " ".join(
+            p.get_text(strip=True)
+            for p in paragraphs
+            if len(p.get_text(strip=True)) > 40
+        )
 
         if not text:
             return None, None
 
-        # الصورة ناخدها من الرابط الحقيقي مش البروكسي
+        # جلب الصورة من الرابط الحقيقي
         real_page = session.get(link, timeout=30)
         soup_real = BeautifulSoup(real_page.text, "html.parser")
 
@@ -131,43 +158,11 @@ def extract_article(link):
         return text, img_url
 
     except Exception as e:
-        print("❌ Article extract failed:", e)
+        print("❌ Article extraction failed:", e)
         return None, None
 
-
 # =========================
-# استخراج المقال
-# =========================
-
-def extract_article(link):
-    r = session.get(link, timeout=30)
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    text_container = soup.find(class_="paragraph-list") or soup.find("div", class_="entry")
-    if not text_container:
-        return None, None
-
-    for tag in text_container.find_all(["script", "style", "iframe", "aside", "footer"]):
-        tag.decompose()
-
-    text = text_container.get_text(" ", strip=True)
-
-    img_url = None
-    img_container = soup.find(class_="main-img")
-    if img_container:
-        img = img_container.find("img")
-        if img:
-            img_url = img.get("src")
-
-    if not img_url:
-        og = soup.find("meta", property="og:image")
-        if og:
-            img_url = og.get("content")
-
-    return text, img_url
-
-# =========================
-# OpenAI (إعادة صياغة)
+# OpenAI (اختياري)
 # =========================
 
 def paraphrase(title, text):
@@ -176,9 +171,9 @@ def paraphrase(title, text):
         return title, text
 
     prompt = (
-        "أعد صياغة الخبر بأسلوب صحفي واضح دون تغيير المعنى.\n\n"
-        f"العنوان:\n{title}\n\n"
-        f"المحتوى:\n{text}"
+        "أعد صياغة الخبر بأسلوب صحفي واضح دون تغيير المعنى، "
+        "وقسمه إلى 3 فقرات:\n\n"
+        f"{text}"
     )
 
     payload = {
@@ -197,11 +192,10 @@ def paraphrase(title, text):
             "https://api.openai.com/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=40
+            timeout=45
         )
         content = r.json()["choices"][0]["message"]["content"].strip()
-        lines = content.split("\n", 1)
-        return lines[0], lines[1] if len(lines) > 1 else content
+        return title, content
 
     except Exception as e:
         print("⚠️ OpenAI failed:", e)
@@ -230,7 +224,7 @@ def main():
 
     news = load_news()
     if not news:
-        send_telegram("error", "❌ لا توجد أخبار صالحة")
+        send_telegram("error", "❌ لا توجد أخبار")
         return
 
     published = 0
@@ -248,18 +242,18 @@ def main():
         if not text or len(text) < 150:
             continue
 
-        new_title, new_text = paraphrase(title, text)
+        final_title, final_text = paraphrase(title, text)
 
         html = "<div dir='rtl' style='font-size:18px;line-height:1.8'>"
         if img:
-            html += f"<div style='text-align:center'><img src='{img}'></div><br>"
-        html += new_text.replace("\n", "<br>")
+            html += f"<div style='text-align:center'><img src='{img}' style='max-width:100%'></div><br>"
+        html += final_text.replace("\n", "<br>")
         html += "</div>"
 
         post = service.posts().insert(
             blogId=BLOG_ID,
             body={
-                "title": new_title,
+                "title": final_title,
                 "content": html,
                 "labels": BLOGGER_LABELS,
                 "isDraft": False
@@ -269,7 +263,7 @@ def main():
         save_history(link)
         published += 1
 
-        send_telegram("success", f"{new_title}\n{post['url']}")
+        send_telegram("success", f"{final_title}\n{post['url']}")
         time.sleep(random.randint(MIN_SLEEP, MAX_SLEEP))
 
     if published == 0:
