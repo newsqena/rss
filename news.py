@@ -98,49 +98,42 @@ def save_history(link):
 # تحميل الأخبار (RSS أو Homepage)
 # =========================
 
-def load_news():
-    # محاولة RSS
+def extract_article(link):
     try:
-        r = session.get(RSS_URL, timeout=30)
+        proxy_link = f"https://textise.org/showtext.aspx?strURL={link}"
+        r = session.get(proxy_link, timeout=40)
         r.raise_for_status()
-        feed = feedparser.parse(r.content)
 
-        if feed.entries:
-            print(f"✅ RSS OK: {len(feed.entries)} items")
-            return [(e.title, e.link) for e in feed.entries]
-
-    except Exception as e:
-        print("⚠️ RSS failed:", e)
-
-    # fallback: الصفحة الرئيسية
-    print("🔄 Switching to homepage scraping...")
-
-    try:
-        home_url = RSS_URL.replace("/feed/", "/")
-        r = session.get(home_url, timeout=30)
-        r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
 
-        results = []
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            title = a.get_text(strip=True)
+        paragraphs = soup.find_all("p")
+        text = " ".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 40)
 
-            if (
-                href.startswith(home_url)
-                and title
-                and len(title) > 25
-                and href.count("/") >= 4
-            ):
-                results.append((title, href))
+        if not text:
+            return None, None
 
-        unique = list(dict.fromkeys(results))
-        print(f"✅ Homepage scraped: {len(unique)} items")
-        return unique
+        # الصورة ناخدها من الرابط الحقيقي مش البروكسي
+        real_page = session.get(link, timeout=30)
+        soup_real = BeautifulSoup(real_page.text, "html.parser")
+
+        img_url = None
+        img_container = soup_real.find(class_="main-img")
+        if img_container:
+            img = img_container.find("img")
+            if img:
+                img_url = img.get("src")
+
+        if not img_url:
+            og = soup_real.find("meta", property="og:image")
+            if og:
+                img_url = og.get("content")
+
+        return text, img_url
 
     except Exception as e:
-        print("🚨 Homepage scrape failed:", e)
-        return []
+        print("❌ Article extract failed:", e)
+        return None, None
+
 
 # =========================
 # استخراج المقال
