@@ -107,14 +107,23 @@ def clean_text(text):
 # =========================
 
 def load_rss():
-    feed = feedparser.parse(
-        RSS_URL,
-        request_headers={
-            "User-Agent": session.headers["User-Agent"],
-            "Accept": session.headers["Accept"]
-        }
-    )
-    return feed.entries
+    try:
+        r = session.get(RSS_URL, timeout=30)
+        r.raise_for_status()
+
+        feed = feedparser.parse(r.content)
+
+        if not feed.entries:
+            print("❌ RSS fetched but no entries found")
+        else:
+            print(f"✅ RSS OK: {len(feed.entries)} items")
+
+        return feed.entries
+
+    except Exception as e:
+        print("🚨 RSS load failed:", e)
+        return []
+
 
 # =========================
 # استخراج المقال
