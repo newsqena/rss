@@ -35,7 +35,7 @@ jobs:
       - name: Run Bot
         run: python main.py
         env:
-          RSS_URL: https://www.elbalad.news/rss.aspx?id=2
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=5
           BLOGGER_LABELS: رياضة
           BOT_NAME: رياضة
 
