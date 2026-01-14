@@ -13,7 +13,7 @@ import cloudinary
 import cloudinary.uploader
 
 # =========================
-# الإعدادات العامة
+# إعدادات عامة
 # =========================
 
 RSS_URL = os.getenv("RSS_URL")
@@ -24,20 +24,20 @@ BLOG_ID = "8964557641790201632"
 SCOPES = ["https://www.googleapis.com/auth/blogger"]
 
 MAX_POSTS_PER_RUN = 3
-HISTORY_FILE = "published_urls.txt"
-
 MIN_SLEEP = 40
 MAX_SLEEP = 75
+HISTORY_FILE = "published_urls.txt"
 
 # =========================
-# Session (مهم جداً)
+# Session (محاكاة متصفح حقيقي)
 # =========================
 
 session = requests.Session()
 session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept": "application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ar,en;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "ar,en-US;q=0.7,en;q=0.3",
+    "Referer": "https://www.google.com/"
 })
 
 # =========================
@@ -63,9 +63,10 @@ def send_telegram(status, message):
 
     icons = {
         "success": "✅",
-        "error": "🚨",
         "info": "ℹ️",
-        "skip": "⏭️"
+        "skip": "⏭️",
+        "duplicate": "🔁",
+        "error": "🚨"
     }
 
     text = f"{icons.get(status, 'ℹ️')} <b>{BOT_NAME}</b>\n\n{message}"
@@ -94,89 +95,98 @@ def save_history(link):
         f.write(link + "\n")
 
 # =========================
-# تنظيف النص
+# تحميل الأخبار (RSS أو Homepage)
 # =========================
 
-def clean_text(text):
-    text = re.sub(r'(اسلام نبيل|بتوقيت النجع|إسلام نبيل)', '', text)
-    text = re.sub(r'[*#\"“”]', '', text)
-    return text.strip()
-
-# =========================
-# RSS (الحل النهائي)
-# =========================
-
-def load_rss():
+def load_news():
+    # محاولة RSS
     try:
         r = session.get(RSS_URL, timeout=30)
         r.raise_for_status()
-
         feed = feedparser.parse(r.content)
 
-        if not feed.entries:
-            print("❌ RSS fetched but no entries found")
-        else:
+        if feed.entries:
             print(f"✅ RSS OK: {len(feed.entries)} items")
-
-        return feed.entries
+            return [(e.title, e.link) for e in feed.entries]
 
     except Exception as e:
-        print("🚨 RSS load failed:", e)
-        return []
+        print("⚠️ RSS failed:", e)
 
+    # fallback: الصفحة الرئيسية
+    print("🔄 Switching to homepage scraping...")
+
+    try:
+        home_url = RSS_URL.replace("/feed/", "/")
+        r = session.get(home_url, timeout=30)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        results = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            title = a.get_text(strip=True)
+
+            if (
+                href.startswith(home_url)
+                and title
+                and len(title) > 25
+                and href.count("/") >= 4
+            ):
+                results.append((title, href))
+
+        unique = list(dict.fromkeys(results))
+        print(f"✅ Homepage scraped: {len(unique)} items")
+        return unique
+
+    except Exception as e:
+        print("🚨 Homepage scrape failed:", e)
+        return []
 
 # =========================
 # استخراج المقال
 # =========================
 
-def extract_article(url):
-    r = session.get(url, timeout=25)
-    r.raise_for_status()
+def extract_article(link):
+    r = session.get(link, timeout=30)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    text_box = soup.find("div", class_="paragraph-list")
-    if not text_box:
+    text_container = soup.find(class_="paragraph-list") or soup.find("div", class_="entry")
+    if not text_container:
         return None, None
 
-    for tag in text_box.find_all(["script", "style", "iframe", "aside"]):
+    for tag in text_container.find_all(["script", "style", "iframe", "aside", "footer"]):
         tag.decompose()
 
-    text = text_box.get_text(" ", strip=True)
+    text = text_container.get_text(" ", strip=True)
 
     img_url = None
-    img_box = soup.find("div", class_="main-img")
-    if img_box:
-        img = img_box.find("img")
+    img_container = soup.find(class_="main-img")
+    if img_container:
+        img = img_container.find("img")
         if img:
             img_url = img.get("src")
+
+    if not img_url:
+        og = soup.find("meta", property="og:image")
+        if og:
+            img_url = og.get("content")
 
     return text, img_url
 
 # =========================
-# OpenAI
+# OpenAI (إعادة صياغة)
 # =========================
 
 def paraphrase(title, text):
     api_key = os.getenv("OPENAI_API_KEY")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    if not api_key:
+        return title, text
 
-    prompt = f"""
-أعد صياغة الخبر التالي بأسلوب صحفي عربي واضح دون تغيير المعنى.
-
-العنوان:
-{title}
-
-المحتوى:
-{text}
-
-الشروط:
-- عنوان جديد فقط في أول سطر
-- الخبر 3 فقرات
-- بدون أسماء أشخاص أو مواقع
-"""
+    prompt = (
+        "أعد صياغة الخبر بأسلوب صحفي واضح دون تغيير المعنى.\n\n"
+        f"العنوان:\n{title}\n\n"
+        f"المحتوى:\n{text}"
+    )
 
     payload = {
         "model": "gpt-4o-mini",
@@ -184,42 +194,36 @@ def paraphrase(title, text):
         "temperature": 0.3
     }
 
-    r = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=60
-    )
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
-    result = r.json()["choices"][0]["message"]["content"].strip()
-    lines = result.split("\n")
-
-    return clean_text(lines[0]), clean_text("\n".join(lines[1:]))
-
-# =========================
-# Cloudinary
-# =========================
-
-def upload_image(url):
-    if not url:
-        return None
     try:
-        img = session.get(url, timeout=20)
-        res = cloudinary.uploader.upload(img.content, folder="blogger_news")
-        return res["secure_url"]
-    except:
-        return None
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=40
+        )
+        content = r.json()["choices"][0]["message"]["content"].strip()
+        lines = content.split("\n", 1)
+        return lines[0], lines[1] if len(lines) > 1 else content
+
+    except Exception as e:
+        print("⚠️ OpenAI failed:", e)
+        return title, text
 
 # =========================
 # Blogger
 # =========================
 
-def blogger_service():
-    creds = json.loads(os.getenv("BLOGGER_CREDS_JSON"))
-    credentials = Credentials.from_authorized_user_info(creds, SCOPES)
-    if credentials.expired and credentials.refresh_token:
-        credentials.refresh(Request())
-    return build("blogger", "v3", credentials=credentials)
+def get_blogger_service():
+    creds_dict = json.loads(os.environ["BLOGGER_CREDS_JSON"])
+    creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+    return build("blogger", "v3", credentials=creds)
 
 # =========================
 # MAIN
@@ -228,64 +232,55 @@ def blogger_service():
 def main():
     print(f"🚀 Starting {BOT_NAME}")
 
-    entries = load_rss()
-    print("📡 RSS entries:", len(entries))
-
-    if not entries:
-        send_telegram("error", "❌ لا توجد أخبار في RSS")
-        return
-
+    service = get_blogger_service()
     history = load_history()
-    service = blogger_service()
+
+    news = load_news()
+    if not news:
+        send_telegram("error", "❌ لا توجد أخبار صالحة")
+        return
 
     published = 0
 
-    for entry in entries:
+    for title, link in news:
         if published >= MAX_POSTS_PER_RUN:
             break
 
-        if entry.link in history:
+        if link in history:
             continue
 
-        print("🧐 Checking:", entry.title)
+        print("🧐 Processing:", title)
 
-        try:
-            text, img = extract_article(entry.link)
-            if not text or len(text) < 150:
-                send_telegram("skip", f"❌ تخطي خبر ضعيف:\n{entry.title}")
-                continue
+        text, img = extract_article(link)
+        if not text or len(text) < 150:
+            continue
 
-            new_title, new_body = paraphrase(entry.title, text)
-            final_img = upload_image(img)
+        new_title, new_text = paraphrase(title, text)
 
-            html = "<div dir='rtl'>"
-            if final_img:
-                html += f"<img src='{final_img}' style='max-width:100%'><br><br>"
-            html += new_body.replace("\n", "<br>")
-            html += "</div>"
+        html = "<div dir='rtl' style='font-size:18px;line-height:1.8'>"
+        if img:
+            html += f"<div style='text-align:center'><img src='{img}'></div><br>"
+        html += new_text.replace("\n", "<br>")
+        html += "</div>"
 
-            post = service.posts().insert(
-                blogId=BLOG_ID,
-                body={
-                    "title": new_title,
-                    "content": html,
-                    "labels": BLOGGER_LABELS,
-                    "isDraft": False
-                }
-            ).execute()
+        post = service.posts().insert(
+            blogId=BLOG_ID,
+            body={
+                "title": new_title,
+                "content": html,
+                "labels": BLOGGER_LABELS,
+                "isDraft": False
+            }
+        ).execute()
 
-            save_history(entry.link)
-            published += 1
+        save_history(link)
+        published += 1
 
-            send_telegram("success", f"{new_title}\n{post['url']}")
-
-            time.sleep(random.randint(MIN_SLEEP, MAX_SLEEP))
-
-        except Exception as e:
-            send_telegram("error", f"{entry.title}\n{e}")
+        send_telegram("success", f"{new_title}\n{post['url']}")
+        time.sleep(random.randint(MIN_SLEEP, MAX_SLEEP))
 
     if published == 0:
-        send_telegram("info", "❌ لم يتم نشر أي أخبار")
+        send_telegram("info", "❌ لا توجد أخبار جديدة")
 
 if __name__ == "__main__":
     main()
