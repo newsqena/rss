@@ -22,9 +22,9 @@ jobs:
           python-version: "3.11"
       - run: pip install -r requirements.txt
       - name: Run Python Script
-        run: python main.py
+        run: python news.py
         env:
           RSS_URL: https://betawqit-elnagaa.com/feed/
           BLOGGER_LABELS: اخبار قنا
-          BOT_NAME: Bot 1
+          BOT_NAME: اخبار قنا
           SCRAPE_MODE: default
