@@ -1,0 +1,51 @@
+name: Bot 6 - صحة وفن
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * *"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # ضروري جداً للكتابة في المستودع
+
+    env:
+      TZ: Africa/Cairo
+      BLOGGER_CREDS_JSON: ${{ secrets.BLOGGER_CREDS_JSON }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Bot
+        run: python main.py
+        env:
+          RSS_URL: https://www.elbalad.news/rss.aspx?id=8
+          BLOGGER_LABELS: صحة وفن
+          BOT_NAME: صحة وفن
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          # إنشاء الملف فوراً إذا لم يكن موجوداً لمنع خطأ pathspec
+          touch published_urls.txt 
+          git add published_urls.txt
+          # سيقوم بالحفظ فقط إذا حدث تغيير، ولن يفشل إذا لم يحدث شيء
+          git commit -m "Update history list [skip ci]" || echo "No changes to commit"
+          git push
