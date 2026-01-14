@@ -75,36 +75,40 @@ def send_telegram(status, message):
 
 def extract_article(link):
     try:
-        r = requests.get(link, headers=HEADERS, timeout=20)
+        r = requests.get(link, headers=HEADERS, timeout=25)
         r.raise_for_status()
+        # التأكد من فك الترميز بشكل صحيح للغة العربية
+        r.encoding = 'utf-8' 
         soup = BeautifulSoup(r.text, "html.parser")
         
-        # 1. استخراج نص المقال من كلاس entry
-        container = soup.find("div", class_="entry")
+
+        container = soup.find("div", class_="entry") or soup.find("div", class_="entry-content")
         if container:
-            # حذف العناصر غير المرغوبة داخل المقال
-            for tag in container.find_all(["script", "style", "iframe", "aside", "ins", "footer"]): 
+            for tag in container.find_all(["script", "style", "iframe", "aside", "ins", "footer", "blockquote"]): 
                 tag.decompose()
             text = container.get_text(" ", strip=True)
         else:
-            text = None
+            paragraphs = soup.find_all("p")
+            text = " ".join([p.get_text() for p in paragraphs if len(p.get_text()) > 50])
 
-        # 2. استخراج الصورة من كلاس single-post-thumb
         img_url = None
         img_container = soup.find("div", class_="single-post-thumb")
         if img_container:
             img_tag = img_container.find("img")
             if img_tag:
-                img_url = img_tag.get("src") or img_tag.get("data-src") or img_tag.get("data-lazy-src")
+                img_url = (img_tag.get("data-src") or 
+                           img_tag.get("data-lazy-src") or 
+                           img_tag.get("src") or 
+                           img_tag.get("data-original"))
 
-        # احتياطي: إذا لم يجد الصورة في الكلاس المخصص، نبحث في og:image
-        if not img_url:
-            og_img = soup.find("meta", property="og:image")
-            img_url = og_img.get("content") if og_img else None
+        if not img_url or "data:image" in img_url:
+            og_img = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "twitter:image"})
+            if og_img:
+                img_url = og_img.get("content")
 
         return text, img_url
     except Exception as e:
-        print(f"❌ Error in extraction: {e}")
+        print(f"❌ Error in extraction for {link}: {e}")
         return None, None
 
 def get_blogger_service():
@@ -125,6 +129,7 @@ def paraphrase_all(original_title, original_text):
         f"1. اكتب العنوان الجديد في السطر الأول مباشرة بدون أي مقدمات.\n"
         f"2. اترك سطراً فارغاً ثم اكتب الخبر بصياغة احترافية ومنظمة.\n"
         f"3. لا تستخدم النجوم (**) أو علامات التنصيص نهائياً."
+        f"4.احذف اي كلمة او جملة تحتوي علي اسلام نبيل او بتوقيت النجع او شمالي محافظة قنا."
     )
     payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "temperature": 0.4}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
