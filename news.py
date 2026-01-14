@@ -26,8 +26,11 @@ HISTORY_FILE = "published_urls.txt"
 WAIT_MIN = 40
 WAIT_MAX = 70
 
+# هيدرز لمحاكاة متصفح حقيقي لتجنب الحظر (403 Forbidden)
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "ar,en-US;q=0.7,en;q=0.3"
 }
 
 cloudinary.config(
@@ -42,18 +45,19 @@ cloudinary.config(
 # =========================
 
 def load_history():
-    if not os.path.exists(HISTORY_FILE):
-        return []
-    with open(HISTORY_FILE, "r") as f:
+    if not os.path.exists(HISTORY_FILE): return []
+    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
         return [line.strip() for line in f.readlines()]
 
 def save_to_history(link):
-    with open(HISTORY_FILE, "a") as f:
+    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
         f.write(link + "\n")
 
 def clean_for_display(text):
     if not text: return ""
     clean = re.sub(r'[*#\"\'“”«»]', '', text)
+    # حذف الكلمات غير المرغوبة التي طلبتيها في الكود القديم
+    clean = re.sub(r'(اسلام نبيل|بتوقيت النجع|شمالي محافظة قنا)', '', clean)
     clean = re.sub(r'^(عنوان جديد|العنوان|عنوان الخبر|Title|New Title|Headline):\s*', '', clean, flags=re.IGNORECASE)
     return clean.strip()
 
@@ -65,74 +69,92 @@ def send_telegram(status, message):
     formatted_text = f"{icons.get(status, 'ℹ️')} <b>{BOT_NAME}</b>\n\n{message}"
     try:
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
-                      data={"chat_id": chat_id, "text": formatted_text, "parse_mode": "HTML", "disable_web_page_preview": False}, 
-                      timeout=10)
+                      data={"chat_id": chat_id, "text": formatted_text, "parse_mode": "HTML"}, timeout=10)
     except: pass
 
 # =========================
-# وظائف استخراج البيانات (المعدلة بالكلاسات)
+# وظيفة الرفع الاحترافية (من كودك القديم)
+# =========================
+
+def upload_to_cloudinary_pro(image_url):
+    if not image_url or "data:image" in image_url: return None
+    try:
+        # تحميل الصورة أولاً لتجاوز حماية الموقع الأصلي (403)
+        img_response = requests.get(image_url, headers=HEADERS, timeout=20)
+        img_response.raise_for_status()
+        
+        # الرفع المباشر لمحتوى الصورة (Bytes)
+        response = cloudinary.uploader.upload(
+            img_response.content,
+            folder="blogger_news",
+            transformation=[{'width': 800, 'crop': "limit"}, {'quality': "auto"}]
+        )
+        return response['secure_url']
+    except Exception as e:
+        print(f"⚠️ Cloudinary Pro Upload Failed: {e}")
+        return image_url # العودة للرابط الأصلي في حال الفشل
+
+# =========================
+# وظائف استخراج البيانات (Targeting Classes)
 # =========================
 
 def extract_article(link):
     try:
         r = requests.get(link, headers=HEADERS, timeout=25)
-        r.raise_for_status()
-        # التأكد من فك الترميز بشكل صحيح للغة العربية
-        r.encoding = 'utf-8' 
+        r.encoding = 'utf-8'
         soup = BeautifulSoup(r.text, "html.parser")
         
-
+        # استهداف الكلاسات التي حددتيها لموقع بتوقيت النجع
+        # 1. النص من كلاس entry
         container = soup.find("div", class_="entry") or soup.find("div", class_="entry-content")
         if container:
-            for tag in container.find_all(["script", "style", "iframe", "aside", "ins", "footer", "blockquote"]): 
+            for tag in container.find_all(["script", "style", "iframe", "aside", "ins", "footer"]): 
                 tag.decompose()
             text = container.get_text(" ", strip=True)
-        else:
-            paragraphs = soup.find_all("p")
-            text = " ".join([p.get_text() for p in paragraphs if len(p.get_text()) > 50])
+        else: text = None
 
+        # 2. الصورة من كلاس single-post-thumb
         img_url = None
         img_container = soup.find("div", class_="single-post-thumb")
         if img_container:
             img_tag = img_container.find("img")
             if img_tag:
-                img_url = (img_tag.get("data-src") or 
-                           img_tag.get("data-lazy-src") or 
-                           img_tag.get("src") or 
-                           img_tag.get("data-original"))
+                # محاولة جلب الرابط الحقيقي (تجاوز Lazy Load)
+                img_url = img_tag.get("data-src") or img_tag.get("src") or img_tag.get("data-lazy-src")
 
-        if not img_url or "data:image" in img_url:
-            og_img = soup.find("meta", property="og:image") or soup.find("meta", attrs={"name": "twitter:image"})
-            if og_img:
-                img_url = og_img.get("content")
+        # احتياطي من Meta Tags
+        if not img_url:
+            og_img = soup.find("meta", property="og:image")
+            img_url = og_img.get("content") if og_img else None
 
         return text, img_url
     except Exception as e:
-        print(f"❌ Error in extraction for {link}: {e}")
+        print(f"❌ Extraction Error: {e}")
         return None, None
 
-def get_blogger_service():
-    creds_json = os.environ.get("BLOGGER_CREDS_JSON")
-    creds_dict = json.loads(creds_json)
-    creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
-    if creds.expired and creds.refresh_token: creds.refresh(Request())
-    return build("blogger", "v3", credentials=creds)
+# =========================
+# الذكاء الاصطناعي وبلوجر
+# =========================
 
 def paraphrase_all(original_title, original_text):
     api_key = os.getenv("OPENAI_API_KEY")
     url = "https://api.openai.com/v1/chat/completions"
+    
+    # البرومبت المطور لتقسيم النص لـ 3 فقرات كما في كودك القديم
     prompt = (
-        f"أنت صحفي محترف. أعد صياغة الخبر التالي بأسلوب مشوق وجذاب.\n\n"
+        f"أنت صحفي محترف. أعد صياغة الخبر التالي بأسلوب مشوق.\n\n"
         f"العنوان الأصلي: {original_title}\n\n"
         f"المحتوى الأصلي: {original_text}\n\n"
         f"المطلوب حرفياً:\n"
-        f"1. اكتب العنوان الجديد في السطر الأول مباشرة بدون أي مقدمات.\n"
-        f"2. اترك سطراً فارغاً ثم اكتب الخبر بصياغة احترافية ومنظمة.\n"
-        f"3. لا تستخدم النجوم (**) أو علامات التنصيص نهائياً."
-        f"4.احذف اي كلمة او جملة تحتوي علي اسلام نبيل او بتوقيت النجع او شمالي محافظة قنا."
+        f"1. ابدأ بالعنوان الجديد مباشرة في السطر الأول.\n"
+        f"2. قسم الخبر إلى 3 فقرات واضحة مع ترك سطرين فارغين بين كل فقرة.\n"
+        f"3. احذف أي إشارة لأسماء أشخاص أو مواقع معينة (مثل إسلام نبيل أو بتوقيت النجع).\n"
+        f"4. لا تستخدم النجوم (**) نهائياً."
     )
+    
     payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "temperature": 0.4}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=45)
         full_result = response.json()['choices'][0]['message']['content'].strip()
@@ -141,6 +163,13 @@ def paraphrase_all(original_title, original_text):
         new_body = "\n".join(lines[1:]).strip()
         return new_title, new_body
     except: return None, None
+
+def get_blogger_service():
+    creds_json = os.environ.get("BLOGGER_CREDS_JSON")
+    creds_dict = json.loads(creds_json)
+    creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+    if creds.expired and creds.refresh_token: creds.refresh(Request())
+    return build("blogger", "v3", credentials=creds)
 
 # =========================
 # التشغيل الرئيسي
@@ -160,55 +189,38 @@ def main():
             if entry.link in published_links: continue
 
             print(f"🧐 Processing: {entry.title}")
-            
-            # سحب المحتوى والصورة من الكلاسات المحددة
             text, img = extract_article(entry.link)
-            if not text or len(text) < 150: 
-                print(f"⚠️ Content too short or not found for: {entry.title}")
-                continue
+            if not text or len(text) < 150: continue
 
-            # إعادة الصياغة باستخدام OpenAI
             new_title, new_content = paraphrase_all(entry.title, text)
-            if not new_title or not new_content: continue
+            if not new_title: continue
 
-            # رفع الصورة لـ Cloudinary لضمان ظهورها دائماً
-            final_img = img
-            if img:
-                try: 
-                    up = cloudinary.uploader.upload(img, folder="news_system")
-                    final_img = up["secure_url"]
-                except: pass
+            # استخدام وظيفة الرفع المطورة (تجاوز 403)
+            final_img = upload_to_cloudinary_pro(img)
 
-            # بناء محتوى المقال بتنسيق HTML
-            html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6; font-family: Cairo, sans-serif;'>"
+            html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.8;'>"
             if final_img: 
-                html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);'></div><br>"
+                html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:12px;'></div><br>"
+            # تحويل الأسطر الجديدة لـ HTML مع مراعاة السطرين الفارغين
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
 
-            # النشر في بلوجر
             inserted_post = service.posts().insert(
                 blogId=BLOG_ID,
                 body={"title": new_title, "content": html, "labels": BLOGGER_LABELS, "isDraft": False}
             ).execute()
             
-            post_url = inserted_post.get('url')
-            
-            # حفظ في السجل
             save_to_history(entry.link)
             published_links.append(entry.link)
             published_count += 1
             
             print(f"✅ Published: {new_title}")
-            send_telegram("success", f"<b>{new_title}</b>\n\n🔗 رابط الخبر:\n{post_url}")
+            send_telegram("success", f"<b>{new_title}</b>\n\n🔗 رابط الخبر:\n{inserted_post.get('url')}")
             
-            # انتظار عشوائي لتجنب الحظر
             if published_count < MAX_POSTS_PER_RUN:
-                wait_time = random.randint(WAIT_MIN, WAIT_MAX)
-                print(f"😴 Waiting {wait_time}s for next article...")
-                time.sleep(wait_time)
+                time.sleep(random.randint(WAIT_MIN, WAIT_MAX))
 
     except Exception as e:
-        print(f"🚨 Critical Error: {e}")
+        print(f"🚨 Error: {e}")
         send_telegram("error", f"خطأ في البوت: {e}")
 
 if __name__ == "__main__":
