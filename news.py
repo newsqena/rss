@@ -26,11 +26,14 @@ HISTORY_FILE = "published_urls.txt"
 WAIT_MIN = 40
 WAIT_MAX = 70
 
-# هيدرز لمحاكاة متصفح حقيقي لتجنب الحظر (403 Forbidden)
+# هيدرز متقدمة جداً لمحاكاة متصفح حقيقي بالكامل
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "ar,en-US;q=0.7,en;q=0.3"
+    "Accept-Language": "ar,en-US;q=0.7,en;q=0.3",
+    "Referer": "https://www.google.com/",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1"
 }
 
 cloudinary.config(
@@ -46,8 +49,10 @@ cloudinary.config(
 
 def load_history():
     if not os.path.exists(HISTORY_FILE): return []
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        return [line.strip() for line in f.readlines()]
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return [line.strip() for line in f.readlines()]
+    except: return []
 
 def save_to_history(link):
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:
@@ -55,9 +60,9 @@ def save_to_history(link):
 
 def clean_for_display(text):
     if not text: return ""
+    # حذف الكلمات التي طلبتِها
+    text = re.sub(r'(اسلام نبيل|بتوقيت النجع|شمالي محافظة قنا|إسلام نبيل)', '', text)
     clean = re.sub(r'[*#\"\'“”«»]', '', text)
-    # حذف الكلمات غير المرغوبة التي طلبتيها في الكود القديم
-    clean = re.sub(r'(اسلام نبيل|بتوقيت النجع|شمالي محافظة قنا)', '', clean)
     clean = re.sub(r'^(عنوان جديد|العنوان|عنوان الخبر|Title|New Title|Headline):\s*', '', clean, flags=re.IGNORECASE)
     return clean.strip()
 
@@ -65,7 +70,7 @@ def send_telegram(status, message):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id: return
-    icons = {"success": "✅", "error": "🚨", "info": "ℹ️"}
+    icons = {"success": "✅", "error": "🚨"}
     formatted_text = f"{icons.get(status, 'ℹ️')} <b>{BOT_NAME}</b>\n\n{message}"
     try:
         requests.post(f"https://api.telegram.org/bot{token}/sendMessage", 
@@ -73,17 +78,14 @@ def send_telegram(status, message):
     except: pass
 
 # =========================
-# وظيفة الرفع الاحترافية (من كودك القديم)
+# وظيفة الرفع المطورة (Download then Upload)
 # =========================
 
 def upload_to_cloudinary_pro(image_url):
     if not image_url or "data:image" in image_url: return None
     try:
-        # تحميل الصورة أولاً لتجاوز حماية الموقع الأصلي (403)
         img_response = requests.get(image_url, headers=HEADERS, timeout=20)
         img_response.raise_for_status()
-        
-        # الرفع المباشر لمحتوى الصورة (Bytes)
         response = cloudinary.uploader.upload(
             img_response.content,
             folder="blogger_news",
@@ -91,11 +93,11 @@ def upload_to_cloudinary_pro(image_url):
         )
         return response['secure_url']
     except Exception as e:
-        print(f"⚠️ Cloudinary Pro Upload Failed: {e}")
-        return image_url # العودة للرابط الأصلي في حال الفشل
+        print(f"⚠️ Cloudinary Error: {e}")
+        return image_url
 
 # =========================
-# وظائف استخراج البيانات (Targeting Classes)
+# استخراج البيانات من الكلاسات المحددة
 # =========================
 
 def extract_article(link):
@@ -104,33 +106,30 @@ def extract_article(link):
         r.encoding = 'utf-8'
         soup = BeautifulSoup(r.text, "html.parser")
         
-        # استهداف الكلاسات التي حددتيها لموقع بتوقيت النجع
-        # 1. النص من كلاس entry
+        # 1. سحب النص من كلاس entry (موقع بتوقيت النجع)
         container = soup.find("div", class_="entry") or soup.find("div", class_="entry-content")
         if container:
-            for tag in container.find_all(["script", "style", "iframe", "aside", "ins", "footer"]): 
-                tag.decompose()
+            for tag in container.find_all(["script", "style", "iframe", "aside", "ins", "footer", "div"]):
+                if tag.get('class') and 'related' in tag.get('class'): tag.decompose()
             text = container.get_text(" ", strip=True)
-        else: text = None
+        else:
+            text = " ".join([p.get_text() for p in soup.find_all("p") if len(p.get_text()) > 50])
 
-        # 2. الصورة من كلاس single-post-thumb
+        # 2. سحب الصورة من كلاس single-post-thumb
         img_url = None
         img_container = soup.find("div", class_="single-post-thumb")
         if img_container:
             img_tag = img_container.find("img")
             if img_tag:
-                # محاولة جلب الرابط الحقيقي (تجاوز Lazy Load)
+                # معالجة Lazy Load (تحميل كسلان)
                 img_url = img_tag.get("data-src") or img_tag.get("src") or img_tag.get("data-lazy-src")
 
-        # احتياطي من Meta Tags
         if not img_url:
             og_img = soup.find("meta", property="og:image")
             img_url = og_img.get("content") if og_img else None
 
         return text, img_url
-    except Exception as e:
-        print(f"❌ Extraction Error: {e}")
-        return None, None
+    except: return None, None
 
 # =========================
 # الذكاء الاصطناعي وبلوجر
@@ -139,29 +138,23 @@ def extract_article(link):
 def paraphrase_all(original_title, original_text):
     api_key = os.getenv("OPENAI_API_KEY")
     url = "https://api.openai.com/v1/chat/completions"
-    
-    # البرومبت المطور لتقسيم النص لـ 3 فقرات كما في كودك القديم
     prompt = (
         f"أنت صحفي محترف. أعد صياغة الخبر التالي بأسلوب مشوق.\n\n"
         f"العنوان الأصلي: {original_title}\n\n"
         f"المحتوى الأصلي: {original_text}\n\n"
-        f"المطلوب حرفياً:\n"
-        f"1. ابدأ بالعنوان الجديد مباشرة في السطر الأول.\n"
-        f"2. قسم الخبر إلى 3 فقرات واضحة مع ترك سطرين فارغين بين كل فقرة.\n"
-        f"3. احذف أي إشارة لأسماء أشخاص أو مواقع معينة (مثل إسلام نبيل أو بتوقيت النجع).\n"
-        f"4. لا تستخدم النجوم (**) نهائياً."
+        f"المطلوب:\n"
+        f"1. ابدأ بالعنوان الجديد مباشرة.\n"
+        f"2. قسّم الخبر إلى 3 فقرات مع سطرين فارغين بينها.\n"
+        f"3. احذف أسماء الأشخاص والمواقع (إسلام نبيل، بتوقيت النجع).\n"
+        f"4. لا تستخدم علامات ** نهائياً."
     )
-    
     payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "temperature": 0.4}
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=45)
         full_result = response.json()['choices'][0]['message']['content'].strip()
         lines = full_result.split('\n')
-        new_title = clean_for_display(lines[0])
-        new_body = "\n".join(lines[1:]).strip()
-        return new_title, new_body
+        return clean_for_display(lines[0]), "\n".join(lines[1:]).strip()
     except: return None, None
 
 def get_blogger_service():
@@ -186,22 +179,22 @@ def main():
         published_count = 0
         for entry in feed.entries:
             if published_count >= MAX_POSTS_PER_RUN: break
-            if entry.link in published_links: continue
+            if entry.link in published_links: 
+                print(f"⏭️ Skipped: {entry.title}")
+                continue
 
             print(f"🧐 Processing: {entry.title}")
             text, img = extract_article(entry.link)
-            if not text or len(text) < 150: continue
+            if not text or len(text) < 100: continue
 
             new_title, new_content = paraphrase_all(entry.title, text)
             if not new_title: continue
 
-            # استخدام وظيفة الرفع المطورة (تجاوز 403)
             final_img = upload_to_cloudinary_pro(img)
 
             html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.8;'>"
             if final_img: 
                 html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:12px;'></div><br>"
-            # تحويل الأسطر الجديدة لـ HTML مع مراعاة السطرين الفارغين
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
 
             inserted_post = service.posts().insert(
@@ -210,9 +203,7 @@ def main():
             ).execute()
             
             save_to_history(entry.link)
-            published_links.append(entry.link)
             published_count += 1
-            
             print(f"✅ Published: {new_title}")
             send_telegram("success", f"<b>{new_title}</b>\n\n🔗 رابط الخبر:\n{inserted_post.get('url')}")
             
