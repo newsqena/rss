@@ -156,15 +156,25 @@ def main():
                     final_img = up["secure_url"]
                 except: pass
 
+            # --- [تعديل هام هنا] ---
+            # تم تغيير بنية الـ HTML لتوافق معايير بلوجر لاستخراج الصور المصغرة
             html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6;'>"
             if final_img: 
-                html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px;'></div><br>"
+                html += f"""
+<div class="separator" style="clear: both; text-align: center;">
+    <a href="{final_img}" imageanchor="1" style="margin-left: 1em; margin-right: 1em;">
+        <img border="0" src="{final_img}" data-original-width="1280" data-original-height="720" style='max-width:100%; border-radius:10px;' />
+    </a>
+</div>
+<br>
+"""
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
+            # ----------------------
 
             # النشر والحصول على الرابط
             inserted_post = service.posts().insert(
                 blogId=BLOG_ID,
-                body={"title": new_title, "content": html, "labels": BLOGGER_LABELS, "isDraft": False}
+                body={"title": new_title, "content": html, "labels": BLOGGER_LABGER_LABELS if 'BLOGGER_LABELS' in globals() else BLOGGER_LABELS, "isDraft": False}
             ).execute()
             
             post_url = inserted_post.get('url')
@@ -173,7 +183,6 @@ def main():
             published_count += 1
             
             print(f"✅ Published: {new_title}")
-            # إرسال العنوان والرابط لتليجرام
             send_telegram("success", f"<b>{new_title}</b>\n\n🔗 رابط الخبر:\n{post_url}")
             
             if published_count < MAX_POSTS_PER_RUN:
