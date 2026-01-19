@@ -156,8 +156,7 @@ def main():
                     final_img = up["secure_url"]
                 except: pass
 
-            # --- [تعديل هام هنا] ---
-            # تم تغيير بنية الـ HTML لتوافق معايير بلوجر لاستخراج الصور المصغرة
+            # تنسيق الـ HTML المتوافق مع مصغرات بلوجر
             html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6;'>"
             if final_img: 
                 html += f"""
@@ -169,12 +168,11 @@ def main():
 <br>
 """
             html += f"{new_content.replace(chr(10), '<br>')}</div>"
-            # ----------------------
 
             # النشر والحصول على الرابط
             inserted_post = service.posts().insert(
                 blogId=BLOG_ID,
-                body={"title": new_title, "content": html, "labels": BLOGGER_LABGER_LABELS if 'BLOGGER_LABELS' in globals() else BLOGGER_LABELS, "isDraft": False}
+                body={"title": new_title, "content": html, "labels": BLOGGER_LABELS, "isDraft": False}
             ).execute()
             
             post_url = inserted_post.get('url')
@@ -189,6 +187,7 @@ def main():
                 time.sleep(random.randint(WAIT_MIN, WAIT_MAX))
 
     except Exception as e:
+        print(f"❌ Error: {e}")
         send_telegram("error", f"خطأ في البوت: {e}")
 
 if __name__ == "__main__":
