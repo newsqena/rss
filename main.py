@@ -156,18 +156,28 @@ def main():
                     final_img = up["secure_url"]
                 except: pass
 
-            # تنسيق الـ HTML المتوافق مع مصغرات بلوجر
-            html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6;'>"
+            # --- التعديل هنا: التنسيق المزدوج لضمان الظهور في الرئيسية وداخل المقال ---
+            html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6; font-family:Arial, sans-serif;'>"
+            
             if final_img: 
+                # 1. وسم مخفي للمصغرات (بلوجر يراه والقالب لا يعرضه)
                 html += f"""
-<div class="separator" style="clear: both; text-align: center;">
-    <a href="{final_img}" imageanchor="1" style="margin-left: 1em; margin-right: 1em;">
-        <img border="0" src="{final_img}" data-original-width="1280" data-original-height="720" style='max-width:100%; border-radius:10px;' />
-    </a>
-</div>
-<br>
-"""
-            html += f"{new_content.replace(chr(10), '<br>')}</div>"
+                <div class="separator" style="clear: both; text-align: center; display:none !important;">
+                    <a href="{final_img}" imageanchor="1">
+                        <img src="{final_img}" data-original-width="1280" data-original-height="720" />
+                    </a>
+                </div>
+                """
+                # 2. وسم الصورة الحقيقي الذي سيظهر داخل المقال
+                html += f"""
+                <div style="text-align:center; margin-bottom:20px;">
+                    <img src="{final_img}" style="max-width:100%; height:auto; border-radius:10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);" alt="{new_title}" />
+                </div>
+                """
+            
+            # إضافة المحتوى مع تحويل الأسطر
+            html += f"<div>{new_content.replace(chr(10), '<br>')}</div>"
+            html += "</div>"
 
             # النشر والحصول على الرابط
             inserted_post = service.posts().insert(
