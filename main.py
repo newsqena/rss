@@ -156,28 +156,10 @@ def main():
                     final_img = up["secure_url"]
                 except: pass
 
-            # --- التعديل هنا: التنسيق المزدوج لضمان الظهور في الرئيسية وداخل المقال ---
-            html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6; font-family:Arial, sans-serif;'>"
-            
+            html = f"<div dir='rtl' style='text-align:justify; font-size:18px; line-height:1.6;'>"
             if final_img: 
-                # 1. وسم مخفي للمصغرات (بلوجر يراه والقالب لا يعرضه)
-                html += f"""
-                <div class="separator" style="clear: both; text-align: center; display:none !important;">
-                    <a href="{final_img}" imageanchor="1">
-                        <img src="{final_img}" data-original-width="1280" data-original-height="720" />
-                    </a>
-                </div>
-                """
-                # 2. وسم الصورة الحقيقي الذي سيظهر داخل المقال
-                html += f"""
-                <div style="text-align:center; margin-bottom:20px;">
-                    <img src="{final_img}" style="max-width:100%; height:auto; border-radius:10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);" alt="{new_title}" />
-                </div>
-                """
-            
-            # إضافة المحتوى مع تحويل الأسطر
-            html += f"<div>{new_content.replace(chr(10), '<br>')}</div>"
-            html += "</div>"
+                html += f"<div style='text-align:center'><img src='{final_img}' style='max-width:100%; border-radius:10px;'></div><br>"
+            html += f"{new_content.replace(chr(10), '<br>')}</div>"
 
             # النشر والحصول على الرابط
             inserted_post = service.posts().insert(
@@ -191,13 +173,13 @@ def main():
             published_count += 1
             
             print(f"✅ Published: {new_title}")
+            # إرسال العنوان والرابط لتليجرام
             send_telegram("success", f"<b>{new_title}</b>\n\n🔗 رابط الخبر:\n{post_url}")
             
             if published_count < MAX_POSTS_PER_RUN:
                 time.sleep(random.randint(WAIT_MIN, WAIT_MAX))
 
     except Exception as e:
-        print(f"❌ Error: {e}")
         send_telegram("error", f"خطأ في البوت: {e}")
 
 if __name__ == "__main__":
