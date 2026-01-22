@@ -15,6 +15,7 @@ import cloudinary.uploader
 # =========================
 # إعدادات عامة
 # =========================
+GPT_WAIT_SECONDS = 25
 RSS_URL = os.getenv("RSS_URL")
 BLOGGER_LABELS = [l.strip() for l in os.getenv("BLOGGER_LABELS", "").split(",") if l.strip()]
 BOT_NAME = os.getenv("BOT_NAME", "Unknown Bot")
@@ -167,6 +168,10 @@ def main():
             if not text or len(text) < 150: continue
 
             new_title, new_content = paraphrase_all(entry.title, text)
+
+            # انتظار إجباري لتجنب RPM limit
+            time.sleep(GPT_WAIT_SECONDS)
+
             if not new_title: continue
 
             # رفع الصورة لـ Cloudinary
@@ -205,4 +210,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
