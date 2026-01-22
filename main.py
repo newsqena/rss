@@ -106,23 +106,44 @@ def extract_article(link):
 def paraphrase_all(original_title, original_text):
     api_key = os.getenv("OPENAI_API_KEY")
     url = "https://api.openai.com/v1/chat/completions"
+
     prompt = (
         f"أنت صحفي محترف. أعد صياغة الخبر التالي بأسلوب مشوق.\n\n"
         f"العنوان الأصلي: {original_title}\n\n"
         f"المحتوى الأصلي: {original_text}\n\n"
-        f"المطلوب حرفياً:\n"
-        f"1. اكتب العنوان الجديد في السطر الأول مباشرة بدون مقدمات.\n"
-        f"2. اترك سطراً فارغاً ثم الخبر بصياغة احترافية.\n"
-        f"3. لا تستخدم النجوم (**) أو علامات التنصيص نهائياً."
+        f"المطلوب:\n"
+        f"1. العنوان في أول سطر فقط.\n"
+        f"2. سطر فارغ ثم نص الخبر.\n"
+        f"3. بدون نجوم أو علامات تنصيص."
     )
-    payload = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "temperature": 0.4}
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.4
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=45)
-        full_result = response.json()['choices'][0]['message']['content'].strip()
-        lines = full_result.split('\n')
+
+        if response.status_code != 200:
+            print("❌ OpenAI Error:", response.text)
+            return None, None
+
+        data = response.json()
+        full = data["choices"][0]["message"]["content"].strip()
+        lines = full.split("\n")
+
         return clean_for_display(lines[0]), "\n".join(lines[1:]).strip()
-    except: return None, None
+
+    except Exception as e:
+        print("❌ OpenAI Exception:", e)
+        return None, None
 
 # =========================
 # التشغيل الرئيسي
@@ -184,3 +205,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
