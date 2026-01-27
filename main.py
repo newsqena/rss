@@ -160,7 +160,7 @@ def paraphrase_all(title, content):
         print("❌ GEMINI_API_KEY not found")
         return None, None
 
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
 
     prompt = f"""
 أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
@@ -293,6 +293,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
