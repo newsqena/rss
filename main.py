@@ -153,14 +153,14 @@ def extract_article(link):
 # =========================
 # إعادة الصياغة (إجباري)
 # =========================
-
 def paraphrase_all(title, content):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         print("❌ GEMINI_API_KEY not found")
         return None, None
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
+    # استخدام الموديل المستقر المتاح في حسابك (Gemini 1.5 Pro)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key={api_key}"
 
     prompt = f"""
 أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
@@ -200,31 +200,45 @@ def paraphrase_all(title, content):
             }
         ],
         "generationConfig": {
-            "temperature": 0.4,
-            "maxOutputTokens": 4096
+            "temperature": 0.7,
+            "maxOutputTokens": 4096,  # مساحة كافية لكتابة الـ 500 كلمة المطلوبة
+            "topP": 0.9,
+            "topK": 40
         }
     }
 
-    try:
-        r = requests.post(url, json=payload, timeout=45)
+    # نظام إعادة محاولة بسيط في حال الزحام (Error 429)
+    for attempt in range(2):
+        try:
+            # زيادة التايم أوت لأن Pro أبطأ قليلاً في معالجة النصوص الطويلة
+            r = requests.post(url, json=payload, timeout=90)
+            
+            if r.status_code == 429:
+                print(f"⚠️ زحام (429).. انتظار 40 ثانية قبل المحاولة الثانية...")
+                time.sleep(40)
+                continue
 
-        if r.status_code != 200:
-            print("❌ Gemini Error:", r.text)
-            return None, None
+            if r.status_code != 200:
+                print(f"❌ Gemini Error {r.status_code}: {r.text}")
+                return None, None
 
-        data = r.json()
-        full = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            data = r.json()
+            full_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            
+            # تنظيف وتحويل التنسيق لـ Blogger
+            full_text = full_text.replace("### ", "<h4>").replace("## ", "<h3>").replace("**", "")
+            
+            lines = full_text.split("\n")
+            new_title = clean_for_display(lines[0])
+            new_body = "\n".join(lines[1:]).strip()
+            
+            return new_title, new_body
 
-        lines = full.split("\n")
-        title = clean_for_display(lines[0])
-        body = "\n".join(lines[1:]).strip()
-
-        return title, body
-
-    except Exception as e:
-        print("❌ Gemini Exception:", e)
-        return None, None
-
+        except Exception as e:
+            print(f"❌ Gemini Exception: {e}")
+            time.sleep(10)
+            
+    return None, None
 # =========================
 # التشغيل الرئيسي
 # =========================
@@ -292,6 +306,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
