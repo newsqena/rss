@@ -155,63 +155,76 @@ def extract_article(link):
 # =========================
 
 def paraphrase_all(title, content):
-    api_key = os.getenv("OPENAI_API_KEY")
-    url = "https://api.openai.com/v1/chat/completions"
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("❌ GEMINI_API_KEY not found")
+        return None, None
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
 
     prompt = f"""
-أنت صحفي عربي محترف متخصص في كتابة الأخبار المتوافقة مع SEO.
+أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
 
-أعد كتابة الخبر التالي ليكون:
-- حصريًا
+الخبر الأصلي:
+{title}
+{content}
+
+التعليمات الإلزامية لتحسين الـ SEO:
+1. العنوان (H1): صُغ عنواناً جذاباً يحتوي على الكلمة المفتاحية الرئيسية في البداية، ويحفز القارئ على النقر دون تضليل.
+2. الكلمات المفتاحية: حدد أهم 3 كلمات مفتاحية في الخبر وقم بتوزيعها بشكل طبيعي داخل النص (بنسبة 1-2%).
+3. الفقرة الأولى (Lead): يجب أن تحتوي على ملخص الخبر وتشمل الكلمات المفتاحية الأساسية، لتظهر بشكل مثالي في "وصف الميتا".
+4. الهيكلة: قسم الخبر إلى فقرات قصيرة (لا تزيد الفقرة عن 3 أسطر) لسهولة القراءة على الهواتف.
+5. العناوين الفرعية: أضف عناوين فرعية (مثل: تفاصيل الواقعة، خلفية عن الحدث، توقعات الخبراء) لتسهيل زحف عناكب جوجل.
+6. الإثراء (Semantic SEO): استخدم مرادفات للكلمات المفتاحية لزيادة فهم جوجل لسياق الموضوع.
+7. الطول: استهدف كتابة 500 كلمة على الأقل من خلال تحليل الخبر وإضافة معلومات إضافية وسياق تاريخي أو جغرافي ذي صلة.
+8. الروابط الداخلية (إرشاد): اختم بجملة تشجع القارئ على متابعة المزيد من الأخبار المشابهة في الموقع.
+
+الشروط الفنية:
+
+- اجعل الخبر حصرياً
 - مختلفًا كليًا عن المصدر
 - مناسبًا للنشر في موقع إخباري عربي
 - متوافقًا مع سياسات جوجل وأدسنس
-
-العنوان الأصلي:
-{title}
-
-نص الخبر الأصلي:
-{content}
-
-التعليمات الإلزامية:
-- سطر أول: عنوان صحفي جذاب يحتوي على كلمات مفتاحية
-- سطر فارغ
-- ثم مقدمة من 2–3 أسطر مختلفة تمامًا عن المصدر
-- ثم إعادة صياغة الخبر بأسلوب صحفي احترافي
-- أضف خلفية أو توضيحًا للحدث إن أمكن
-- إن كان الخبر محليًا، أضف السياق المحلي (مثل المحافظة أو المدينة)
-- طول المقال لا يقل عن 500 كلمة
-- لغة عربية فصحى بسيطة
-- بدون علامات تنصيص أو رموز أو نجوم
+- لغة عربية فصحى حديثة وسلسة.
+- تجنب الحشو الممل؛ كل جملة يجب أن تضيف قيمة.
+- ممنوع استخدام رموز أو علامات تنصيص زائدة.
+- ابدأ بالعنوان مباشرة ثم سطر فارغ ثم النص.
 """
 
     payload = {
-        "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.5
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 2048
+        }
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=45)
+        r = requests.post(url, json=payload, timeout=45)
+
         if r.status_code != 200:
-            print("❌ OpenAI Error:", r.text)
+            print("❌ Gemini Error:", r.text)
             return None, None
 
         data = r.json()
-        full = data["choices"][0]["message"]["content"].strip()
-        lines = full.split("\n")
+        full = data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
+        lines = full.split("\n")
         title = clean_for_display(lines[0])
         body = "\n".join(lines[1:]).strip()
 
         return title, body
+
     except Exception as e:
-        print("❌ OpenAI Exception:", e)
+        print("❌ Gemini Exception:", e)
         return None, None
+
 
 # =========================
 # التشغيل الرئيسي
@@ -280,4 +293,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
