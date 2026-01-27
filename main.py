@@ -156,45 +156,74 @@ def extract_article(link):
 
 def paraphrase_all(title, content):
     api_key = os.getenv("GEMINI_API_KEY")
-    
-    # 1. فحص هل المفتاح موجود أصلاً؟
     if not api_key:
-        print("❌ الخطأ: مفتاح GEMINI_API_KEY غير موجود في Secrets")
+        print("❌ GEMINI_API_KEY not found")
         return None, None
-    else:
-        print(f"✅ المفتاح موجود، طوله: {len(api_key)} حرف")
 
-    # 2. فحص الموديلات المتاحة لهذا المفتاح (أهم خطوة)
-    # سنطلب من جوجل إعطاءنا قائمة بالموديلات التي يسمح لنا باستخدامها
-    list_models_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-    
-    try:
-        print("🔍 جاري فحص الموديلات المتاحة لحسابك...")
-        check_r = requests.get(list_models_url, timeout=10)
-        if check_r.status_code == 200:
-            models_data = check_r.json()
-            available_models = [m['name'] for m in models_data.get('models', [])]
-            print(f"📋 الموديلات المتاحة لك هي: {available_models}")
-        else:
-            print(f"❌ فشل فحص الموديلات. كود الخطأ: {check_r.status_code}")
-            print(f"📝 رسالة جوجل: {check_r.text}")
-    except Exception as e:
-        print(f"❌ حدث خطأ أثناء الاتصال بجوجل: {e}")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
 
-    # 3. محاولة الإرسال النهائية مع طباعة تفاصيل الطلب
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    payload = {"contents": [{"parts": [{"text": "test"}]}]}
-    
-    print(f"🚀 محاولة إرسال طلب تجريبي للموديل gemini-1.5-flash...")
+    prompt = f"""
+أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
+
+الخبر الأصلي:
+{title}
+{content}
+
+التعليمات الإلزامية لتحسين الـ SEO:
+1. العنوان (H1): صُغ عنواناً جذاباً يحتوي على الكلمة المفتاحية الرئيسية في البداية، ويحفز القارئ على النقر دون تضليل.
+2. الكلمات المفتاحية: حدد أهم 3 كلمات مفتاحية في الخبر وقم بتوزيعها بشكل طبيعي داخل النص (بنسبة 1-2%).
+3. الفقرة الأولى (Lead): يجب أن تحتوي على ملخص الخبر وتشمل الكلمات المفتاحية الأساسية، لتظهر بشكل مثالي في "وصف الميتا".
+4. الهيكلة: قسم الخبر إلى فقرات قصيرة (لا تزيد الفقرة عن 3 أسطر) لسهولة القراءة على الهواتف.
+5. العناوين الفرعية: أضف عناوين فرعية (مثل: تفاصيل الواقعة، خلفية عن الحدث، توقعات الخبراء) لتسهيل زحف عناكب جوجل.
+6. الإثراء (Semantic SEO): استخدم مرادفات للكلمات المفتاحية لزيادة فهم جوجل لسياق الموضوع.
+7. الطول: استهدف كتابة 500 كلمة على الأقل من خلال تحليل الخبر وإضافة معلومات إضافية وسياق تاريخي أو جغرافي ذي صلة.
+8. الروابط الداخلية (إرشاد): اختم بجملة تشجع القارئ على متابعة المزيد من الأخبار المشابهة في الموقع.
+
+الشروط الفنية:
+
+- اجعل الخبر حصرياً
+- مختلفًا كليًا عن المصدر
+- مناسبًا للنشر في موقع إخباري عربي
+- متوافقًا مع سياسات جوجل وأدسنس
+- لغة عربية فصحى حديثة وسلسة.
+- تجنب الحشو الممل؛ كل جملة يجب أن تضيف قيمة.
+- ممنوع استخدام رموز أو علامات تنصيص زائدة.
+- ابدأ بالعنوان مباشرة ثم سطر فارغ ثم النص.
+"""
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 2048
+        }
+    }
+
     try:
-        r = requests.post(url, json=payload, timeout=10)
-        print(f"📡 نتيجة الطلب التجريبي - كود الحالة: {r.status_code}")
+        r = requests.post(url, json=payload, timeout=45)
+
         if r.status_code != 200:
-            print(f"⚠️ تفاصيل الخطأ من جوجل: {r.text}")
-    except Exception as e:
-        print(f"❌ فشل الطلب التجريبي: {e}")
+            print("❌ Gemini Error:", r.text)
+            return None, None
 
-    return None, None # سنوقف البوت هنا فقط لنرى النتائج في الـ Logs
+        data = r.json()
+        full = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+        lines = full.split("\n")
+        title = clean_for_display(lines[0])
+        body = "\n".join(lines[1:]).strip()
+
+        return title, body
+
+    except Exception as e:
+        print("❌ Gemini Exception:", e)
+        return None, None
 
 # =========================
 # التشغيل الرئيسي
@@ -263,6 +292,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
