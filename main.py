@@ -160,7 +160,7 @@ def paraphrase_all(title, content):
         print("❌ GEMINI_API_KEY not found")
         return None, None
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
 
     prompt = f"""
 أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
@@ -200,8 +200,8 @@ def paraphrase_all(title, content):
             }
         ],
         "generationConfig": {
-            "temperature": 0.5,
-            "maxOutputTokens": 2048
+            "temperature": 0.4,
+            "maxOutputTokens": 4096
         }
     }
 
@@ -292,6 +292,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
