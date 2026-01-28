@@ -154,12 +154,12 @@ def extract_article(link):
 # إعادة الصياغة (إجباري)
 # =========================
 def paraphrase_all(title, content):
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("❌ DEEPSEEK_API_KEY not found")
+        print("❌ GEMINI_API_KEY not found")
         return None, None
-
-    url = "https://api.deepseek.com/v1/chat/completions"
+    model_name = "gemini-1.5-flash" 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
 
     prompt = f"""
 أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
@@ -175,8 +175,7 @@ def paraphrase_all(title, content):
 4. الهيكلة: فقرات قصيرة لا تزيد عن 3 أسطر.
 5. عناوين فرعية واضحة.
 6. استخدم مرادفات (Semantic SEO).
-7. الطول: 500 كلمة على الأقل مع إثراء وسياق إضافي.
-8. اختم بجملة تشجع على متابعة أخبار مشابهة.
+7. اختم بجملة تشجع على متابعة أخبار مشابهة.
 
 الشروط:
 - حصري
@@ -295,6 +294,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
