@@ -154,13 +154,12 @@ def extract_article(link):
 # إعادة الصياغة (إجباري)
 # =========================
 def paraphrase_all(title, content):
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
-        print("❌ GEMINI_API_KEY not found")
+        print("❌ DEEPSEEK_API_KEY not found")
         return None, None
 
-    # استخدام الموديل المستقر المتاح في حسابك (Gemini 1.5 Pro)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key={api_key}"
+    url = "https://api.deepseek.com/v1/chat/completions"
 
     prompt = f"""
 أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
@@ -172,73 +171,63 @@ def paraphrase_all(title, content):
 التعليمات الإلزامية لتحسين الـ SEO:
 1. العنوان (H1): صُغ عنواناً جذاباً يحتوي على الكلمة المفتاحية الرئيسية في البداية، ويحفز القارئ على النقر دون تضليل.
 2. الكلمات المفتاحية: حدد أهم 3 كلمات مفتاحية في الخبر وقم بتوزيعها بشكل طبيعي داخل النص (بنسبة 1-2%).
-3. الفقرة الأولى (Lead): يجب أن تحتوي على ملخص الخبر وتشمل الكلمات المفتاحية الأساسية، لتظهر بشكل مثالي في "وصف الميتا".
-4. الهيكلة: قسم الخبر إلى فقرات قصيرة (لا تزيد الفقرة عن 3 أسطر) لسهولة القراءة على الهواتف.
-5. العناوين الفرعية: أضف عناوين فرعية (مثل: تفاصيل الواقعة، خلفية عن الحدث، توقعات الخبراء) لتسهيل زحف عناكب جوجل.
-6. الإثراء (Semantic SEO): استخدم مرادفات للكلمات المفتاحية لزيادة فهم جوجل لسياق الموضوع.
-7. الطول: استهدف كتابة 500 كلمة على الأقل من خلال تحليل الخبر وإضافة معلومات إضافية وسياق تاريخي أو جغرافي ذي صلة.
-8. الروابط الداخلية (إرشاد): اختم بجملة تشجع القارئ على متابعة المزيد من الأخبار المشابهة في الموقع.
+3. الفقرة الأولى (Lead): يجب أن تحتوي على ملخص الخبر وتشمل الكلمات المفتاحية الأساسية.
+4. الهيكلة: فقرات قصيرة لا تزيد عن 3 أسطر.
+5. عناوين فرعية واضحة.
+6. استخدم مرادفات (Semantic SEO).
+7. الطول: 500 كلمة على الأقل مع إثراء وسياق إضافي.
+8. اختم بجملة تشجع على متابعة أخبار مشابهة.
 
-الشروط الفنية:
-
-- اجعل الخبر حصرياً
-- مختلفًا كليًا عن المصدر
-- مناسبًا للنشر في موقع إخباري عربي
-- متوافقًا مع سياسات جوجل وأدسنس
-- لغة عربية فصحى حديثة وسلسة.
-- تجنب الحشو الممل؛ كل جملة يجب أن تضيف قيمة.
-- ممنوع استخدام رموز أو علامات تنصيص زائدة.
-- ابدأ بالعنوان مباشرة ثم سطر فارغ ثم النص.
+الشروط:
+- حصري
+- مختلف كلياً عن المصدر
+- مناسب لموقع إخباري
+- متوافق مع Google AdSense
+- لغة عربية فصحى حديثة
+- ابدأ بالعنوان مباشرة ثم سطر فارغ ثم النص
 """
 
     payload = {
-        "contents": [
+        "model": "deepseek-chat",
+        "messages": [
             {
-                "parts": [
-                    {"text": prompt}
-                ]
+                "role": "system",
+                "content": "أنت محرر أخبار عربي محترف ومتخصص في SEO."
+            },
+            {
+                "role": "user",
+                "content": prompt
             }
         ],
-        "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 4096,  # مساحة كافية لكتابة الـ 500 كلمة المطلوبة
-            "topP": 0.9,
-            "topK": 40
-        }
+        "temperature": 0.5,
+        "max_tokens": 4096
     }
 
-    # نظام إعادة محاولة بسيط في حال الزحام (Error 429)
-    for attempt in range(2):
-        try:
-            # زيادة التايم أوت لأن Pro أبطأ قليلاً في معالجة النصوص الطويلة
-            r = requests.post(url, json=payload, timeout=90)
-            
-            if r.status_code == 429:
-                print(f"⚠️ زحام (429).. انتظار 40 ثانية قبل المحاولة الثانية...")
-                time.sleep(40)
-                continue
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
-            if r.status_code != 200:
-                print(f"❌ Gemini Error {r.status_code}: {r.text}")
-                return None, None
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=60)
 
-            data = r.json()
-            full_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            
-            # تنظيف وتحويل التنسيق لـ Blogger
-            full_text = full_text.replace("### ", "<h4>").replace("## ", "<h3>").replace("**", "")
-            
-            lines = full_text.split("\n")
-            new_title = clean_for_display(lines[0])
-            new_body = "\n".join(lines[1:]).strip()
-            
-            return new_title, new_body
+        if r.status_code != 200:
+            print("❌ DeepSeek Error:", r.text)
+            return None, None
 
-        except Exception as e:
-            print(f"❌ Gemini Exception: {e}")
-            time.sleep(10)
-            
-    return None, None
+        data = r.json()
+        full = data["choices"][0]["message"]["content"].strip()
+
+        lines = full.split("\n")
+        new_title = clean_for_display(lines[0])
+        body = "\n".join(lines[1:]).strip()
+
+        return new_title, body
+
+    except Exception as e:
+        print("❌ DeepSeek Exception:", e)
+        return None, None
+
 # =========================
 # التشغيل الرئيسي
 # =========================
@@ -306,6 +295,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
