@@ -160,7 +160,7 @@ def paraphrase_all(title, content):
         return None, None
 
     # الرابط الصحيح لموديل Gemini المتاح لك
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
+    url = f"0"
 
     prompt = f"""
 أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
@@ -294,3 +294,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
