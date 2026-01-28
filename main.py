@@ -158,7 +158,8 @@ def paraphrase_all(title, content):
     if not api_key:
         print("❌ GEMINI_API_KEY not found")
         return None, None
-    model_name = "gemini-1.5-flash" 
+
+    # الرابط الصحيح لموديل Gemini المتاح لك
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
 
     prompt = f"""
@@ -178,44 +179,43 @@ def paraphrase_all(title, content):
 7. اختم بجملة تشجع على متابعة أخبار مشابهة.
 
 الشروط:
-- حصري
-- مختلف كلياً عن المصدر
-- مناسب لموقع إخباري
-- متوافق مع Google AdSense
-- لغة عربية فصحى حديثة
-- ابدأ بالعنوان مباشرة ثم سطر فارغ ثم النص
+- حصري ومختلف كلياً عن المصدر.
+- مناسب لموقع إخباري ومتوافق مع Google AdSense.
+- لغة عربية فصحى حديثة.
+- ابدأ بالعنوان مباشرة ثم سطر فارغ ثم النص.
 """
 
+    # هيكلية البيانات الصحيحة لـ Gemini (لا تستخدم نظام messages هنا)
     payload = {
-        "model": "deepseek-chat",
-        "messages": [
+        "contents": [
             {
-                "role": "system",
-                "content": "أنت محرر أخبار عربي محترف ومتخصص في SEO."
-            },
-            {
-                "role": "user",
-                "content": prompt
+                "parts": [{"text": prompt}]
             }
         ],
-        "temperature": 0.5,
-        "max_tokens": 4096
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 4096
+        }
     }
 
+    # في جوجل (Gemini) لا نضع المفتاح في الـ headers
     headers = {
-        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=60)
+        r = requests.post(url, headers=headers, json=payload, timeout=90)
 
         if r.status_code != 200:
-            print("❌ DeepSeek Error:", r.text)
+            print("❌ Gemini Error:", r.text)
             return None, None
 
         data = r.json()
-        full = data["choices"][0]["message"]["content"].strip()
+        # استخراج النص بالطريقة الصحيحة لـ Gemini
+        full = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+        # تنظيف وتحويل التنسيق
+        full = full.replace("### ", "<h4>").replace("## ", "<h3>").replace("**", "")
 
         lines = full.split("\n")
         new_title = clean_for_display(lines[0])
@@ -224,7 +224,7 @@ def paraphrase_all(title, content):
         return new_title, body
 
     except Exception as e:
-        print("❌ DeepSeek Exception:", e)
+        print("❌ Gemini Exception:", e)
         return None, None
 
 # =========================
@@ -294,15 +294,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
