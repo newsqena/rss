@@ -153,79 +153,6 @@ def extract_article(link):
 # =========================
 # إعادة الصياغة (إجباري)
 # =========================
-def paraphrase_all(title, content):
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        print("❌ GEMINI_API_KEY not found")
-        return None, None
-
-    # الرابط الصحيح لموديل Gemini المتاح لك
-    url = f"0"
-
-    prompt = f"""
-أنت خبير SEO وصحفي عربي محترف. مهمتك هي إعادة صياغة الخبر التالي ليتصدر نتائج البحث ويحقق معايير Google Discover.
-
-الخبر الأصلي:
-{title}
-{content}
-
-التعليمات الإلزامية لتحسين الـ SEO:
-1. العنوان (H1): صُغ عنواناً جذاباً يحتوي على الكلمة المفتاحية الرئيسية في البداية، ويحفز القارئ على النقر دون تضليل.
-2. الكلمات المفتاحية: حدد أهم 3 كلمات مفتاحية في الخبر وقم بتوزيعها بشكل طبيعي داخل النص (بنسبة 1-2%).
-3. الفقرة الأولى (Lead): يجب أن تحتوي على ملخص الخبر وتشمل الكلمات المفتاحية الأساسية.
-4. الهيكلة: فقرات قصيرة لا تزيد عن 3 أسطر.
-5. عناوين فرعية واضحة.
-6. استخدم مرادفات (Semantic SEO).
-7. اختم بجملة تشجع على متابعة أخبار مشابهة.
-
-الشروط:
-- حصري ومختلف كلياً عن المصدر.
-- مناسب لموقع إخباري ومتوافق مع Google AdSense.
-- لغة عربية فصحى حديثة.
-- ابدأ بالعنوان مباشرة ثم سطر فارغ ثم النص.
-"""
-
-    # هيكلية البيانات الصحيحة لـ Gemini (لا تستخدم نظام messages هنا)
-    payload = {
-        "contents": [
-            {
-                "parts": [{"text": prompt}]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.5,
-            "maxOutputTokens": 4096
-        }
-    }
-
-    # في جوجل (Gemini) لا نضع المفتاح في الـ headers
-    headers = {
-        "Content-Type": "application/json"
-    }
-
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=90)
-
-        if r.status_code != 200:
-            print("❌ Gemini Error:", r.text)
-            return None, None
-
-        data = r.json()
-        # استخراج النص بالطريقة الصحيحة لـ Gemini
-        full = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-        # تنظيف وتحويل التنسيق
-        full = full.replace("### ", "<h4>").replace("## ", "<h3>").replace("**", "")
-
-        lines = full.split("\n")
-        new_title = clean_for_display(lines[0])
-        body = "\n".join(lines[1:]).strip()
-
-        return new_title, body
-
-    except Exception as e:
-        print("❌ Gemini Exception:", e)
-        return None, None
 
 # =========================
 # التشغيل الرئيسي
@@ -294,4 +221,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
