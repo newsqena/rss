@@ -14,7 +14,7 @@ jobs:
     env:
       TZ: Africa/Cairo
       BLOGGER_CREDS_JSON: ${{ secrets.BLOGGER_CREDS_JSON }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
