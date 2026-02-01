@@ -212,10 +212,25 @@ def paraphrase_all(title, content):
 # =========================
 
 def main():
-    print(f"🚀 Starting {BOT_NAME}...")
+    
+import traceback  # <--- ضيف ده
+    print("🚀 Starting Bot 2...")
 
-    service = get_blogger_service()
-    feed = feedparser.parse(requests.get(RSS_URL, headers=HEADERS, timeout=20).content)
+    # ===== تحقق من Blogger Service =====
+    try:
+        service = get_blogger_service()
+    except Exception as e:
+        print("❌ Blogger service failed:", e)
+        traceback.print_exc()
+        return
+
+    # ===== تحقق من RSS =====
+    try:
+        feed = feedparser.parse(requests.get(RSS_URL, headers=HEADERS, timeout=20).content)
+    except Exception as e:
+        print("❌ RSS fetch failed:", e)
+        traceback.print_exc()
+        return
     published = load_history()
 
     latest_entries = feed.entries[:3]
@@ -273,5 +288,7 @@ def main():
         send_telegram("success", f"<b>{new_title}</b>\n\n🔗 {post.get('url')}")
 
 if __name__ == "__main__":
+    
     main()
+
 
