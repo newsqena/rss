@@ -217,10 +217,9 @@ def paraphrase_all(title, content):
 # =========================
 # التشغيل الرئيسي
 # =========================
-
+# =========================
 def main():
-    
-import traceback  # <--- ضيف ده
+    import traceback  # <--- صح داخل الدالة
     print("🚀 Starting Bot 2...")
 
     # ===== تحقق من Blogger Service =====
@@ -238,8 +237,8 @@ import traceback  # <--- ضيف ده
         print("❌ RSS fetch failed:", e)
         traceback.print_exc()
         return
-    published = load_history()
 
+    published = load_history()
     latest_entries = feed.entries[:3]
     published_count = 0
 
@@ -295,8 +294,4 @@ import traceback  # <--- ضيف ده
         send_telegram("success", f"<b>{new_title}</b>\n\n🔗 {post.get('url')}")
 
 if __name__ == "__main__":
-    
     main()
-
-
-
